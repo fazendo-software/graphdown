@@ -13,7 +13,9 @@ export function parseNota(texto: string): Nota {
 }
 
 export function serializarNota(doc: Document, corpo: string): string {
-  return `---\n${doc.toString().trimEnd()}\n---\n${corpo}`;
+  // lineWidth: 0 desliga a quebra automatica em 80 colunas. Sem isso, editar um campo
+  // requebra linhas longas de OUTROS campos e o diff acusa alteracao que nao houve.
+  return `---\n${doc.toString({ lineWidth: 0 }).trimEnd()}\n---\n${corpo}`;
 }
 
 export function editarCampo(texto: string, chave: string, valor: unknown): string {
@@ -22,7 +24,10 @@ export function editarCampo(texto: string, chave: string, valor: unknown): strin
   // usuario escreveu. A UI mostra o erro e pede correcao no editor de texto.
   if (erro) throw new Error(`frontmatter inválido: ${erro}`);
   doc.set(chave, valor);
-  return serializarNota(doc, corpo);
+  const saida = serializarNota(doc, corpo);
+  // O serializador do `yaml` so emite LF. Arquivo escrito no Windows viraria EOL misto
+  // (frontmatter LF, corpo CRLF) e o diff acusaria todas as linhas do frontmatter.
+  return texto.includes("\r\n") ? saida.replace(/(?<!\r)\n/g, "\r\n") : saida;
 }
 
 export function editarCorpo(texto: string, corpo: string): string {

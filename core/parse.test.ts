@@ -60,3 +60,24 @@ test("serializarNota volta ao formato de arquivo", () => {
   assert.ok(saida.startsWith("---\n"));
   assert.ok(saida.endsWith("---\nx\n"));
 });
+
+test("editarCampo não requebra linha longa nem bloco literal de outro campo", () => {
+  // precisa passar de 80 colunas: e o lineWidth padrao do serializador do `yaml`
+  const longa = Array.from({ length: 30 }, (_, i) => `palavra${i}`).join(" ");
+  const nota = `---\ntitulo: X\nlonga: "${longa}"\ndescricao: |\n  bloco literal\n  segunda linha\nstatus: pendente\n---\ncorpo\n`;
+  const saida = editarCampo(nota, "status", "ativo");
+  assert.ok(saida.includes(`longa: "${longa}"`), "linha longa foi requebrada");
+  assert.ok(saida.includes("descricao: |\n  bloco literal\n  segunda linha\n"), "bloco literal mudou");
+});
+
+test("editarCampo mantém CRLF em arquivo escrito no Windows", () => {
+  const nota = "---\r\ntitulo: X\r\nstatus: pendente\r\n---\r\ncorpo\r\n";
+  const saida = editarCampo(nota, "status", "ativo");
+  assert.ok(saida.includes("status: ativo\r\n"), "campo editado perdeu CRLF");
+  assert.equal(saida.match(/(?<!\r)\n/g), null, "sobrou LF solto: arquivo virou EOL misto");
+});
+
+test("editarCampo mantém LF em arquivo unix", () => {
+  const saida = editarCampo(NOTA, "prazo", "5d");
+  assert.equal(saida.includes("\r\n"), false, "introduziu CRLF em arquivo LF");
+});
