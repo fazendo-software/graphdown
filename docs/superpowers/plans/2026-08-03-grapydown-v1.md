@@ -14,16 +14,23 @@
 
 ## Nota sobre a versão do Node
 
-Todo `core/` e `servidor/` roda `.ts` direto, sem transpilar, porque Node 22.18+ remove
-anotações de tipo nativamente. Confirme antes de começar:
+Todo `core/` e `servidor/` roda `.ts` direto, sem transpilar. Node 22.18+ faz isso sozinho;
+abaixo disso precisa da flag `--experimental-strip-types`, que existe desde a 22.6.
 
-```bash
-node --version   # precisa ser >= v22.18.0
-```
+**Esta máquina tem v22.13.1**, então todo comando `node` deste plano leva a flag — já está
+escrita em cada Step, nos scripts do `package.json` e no shebang do CLI. Verificado
+empiricamente nesta versão: type stripping funciona, o test runner roda `.ts`, e
+`#!/usr/bin/env -S node --experimental-strip-types` funciona como shebang.
 
-Se for entre 22.6 e 22.17, todos os comandos `node` deste plano precisam de
-`--experimental-strip-types`. Se for menor, atualize o Node — a alternativa é adicionar um
-transpilador, que é exatamente o que este projeto está evitando.
+Duas pegadinhas desta versão, já contornadas no plano:
+
+1. `node --test <pasta>` **não** funciona aqui (só a partir da 22.14). Use glob entre aspas:
+   `node --experimental-strip-types --test "core/*.test.ts"`.
+2. Sem `"type": "module"` no `package.json` os arquivos `.ts` caem em CommonJS e o import
+   quebra. A Task 1 já cria o campo.
+
+Quando o Node subir para 22.18+, dá para apagar todas as ocorrências de
+`--experimental-strip-types` — nada mais muda.
 
 Type stripping nativo tem duas regras que valem para todo código deste plano:
 
@@ -71,10 +78,10 @@ Type stripping nativo tem duas regras que valem para todo código deste plano:
   "type": "module",
   "bin": { "grapydown": "./servidor/index.ts" },
   "scripts": {
-    "test": "node --test core/ servidor/",
+    "test": "node --experimental-strip-types --test \"core/*.test.ts\" \"servidor/*.test.ts\"",
     "dev:web": "vite --config web/vite.config.ts",
     "build:web": "vite build --config web/vite.config.ts",
-    "serve": "node servidor/index.ts serve"
+    "serve": "node --experimental-strip-types servidor/index.ts serve"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
@@ -282,7 +289,7 @@ test("serializarNota volta ao formato de arquivo", () => {
 
 - [ ] **Step 2: Rodar e confirmar que falha**
 
-Run: `node --test core/parse.test.ts`
+Run: `node --experimental-strip-types --test core/parse.test.ts`
 Expected: FAIL — `Cannot find module` para `./parse.ts`.
 
 - [ ] **Step 3: Implementar `core/parse.ts`**
@@ -324,7 +331,7 @@ export function editarCorpo(texto: string, corpo: string): string {
 
 - [ ] **Step 4: Rodar e confirmar que passa**
 
-Run: `node --test core/parse.test.ts`
+Run: `node --experimental-strip-types --test core/parse.test.ts`
 Expected: PASS, 7 testes.
 
 - [ ] **Step 5: Commit**
@@ -409,7 +416,7 @@ test("ciclo é permitido", () => {
 
 - [ ] **Step 2: Rodar e confirmar que falha**
 
-Run: `node --test core/grafo.test.ts`
+Run: `node --experimental-strip-types --test core/grafo.test.ts`
 Expected: FAIL — `Cannot find module` para `./grafo.ts`.
 
 - [ ] **Step 3: Implementar `core/grafo.ts`**
@@ -464,7 +471,7 @@ export function construirGrafo(arquivos: { id: string; texto: string }[]): Grafo
 
 - [ ] **Step 4: Rodar e confirmar que passa**
 
-Run: `node --test core/grafo.test.ts`
+Run: `node --experimental-strip-types --test core/grafo.test.ts`
 Expected: PASS, 8 testes.
 
 - [ ] **Step 5: Commit**
@@ -532,7 +539,7 @@ test("idDeTitulo faz slug sem acento", () => {
 
 - [ ] **Step 2: Rodar e confirmar que falha**
 
-Run: `node --test core/categoria.test.ts`
+Run: `node --experimental-strip-types --test core/categoria.test.ts`
 Expected: FAIL — `Cannot find module` para `./categoria.ts`.
 
 - [ ] **Step 3: Implementar `core/categoria.ts`**
@@ -573,7 +580,7 @@ export function idDeTitulo(titulo: string): string {
 
 - [ ] **Step 4: Rodar e confirmar que passa**
 
-Run: `node --test core/categoria.test.ts`
+Run: `node --experimental-strip-types --test core/categoria.test.ts`
 Expected: PASS, 4 testes.
 
 - [ ] **Step 5: Criar `categorias/processo.yaml`**
@@ -699,7 +706,7 @@ test("lerLayout devolve vazio quando não existe", async () => {
 
 - [ ] **Step 2: Rodar e confirmar que falha**
 
-Run: `node --test servidor/arquivos.test.ts`
+Run: `node --experimental-strip-types --test servidor/arquivos.test.ts`
 Expected: FAIL — `Cannot find module` para `./arquivos.ts`.
 
 - [ ] **Step 3: Implementar `servidor/arquivos.ts`**
@@ -774,7 +781,7 @@ export async function gravarLayout(dir: string, layout: Layout): Promise<void> {
 
 - [ ] **Step 4: Rodar e confirmar que passa**
 
-Run: `node --test servidor/arquivos.test.ts`
+Run: `node --experimental-strip-types --test servidor/arquivos.test.ts`
 Expected: PASS, 7 testes.
 
 - [ ] **Step 5: Commit**
@@ -945,7 +952,7 @@ cliente já vem sem ela.
 
 - [ ] **Step 2: Rodar e confirmar que falha**
 
-Run: `node --test servidor/rotas.test.ts`
+Run: `node --experimental-strip-types --test servidor/rotas.test.ts`
 Expected: FAIL — `Cannot find module` para `./rotas.ts`.
 
 - [ ] **Step 3: Implementar `servidor/rotas.ts`**
@@ -1150,7 +1157,7 @@ export function avisarTodos(): void {
 
 - [ ] **Step 5: Rodar e confirmar que passa**
 
-Run: `node --test servidor/rotas.test.ts`
+Run: `node --experimental-strip-types --test servidor/rotas.test.ts`
 Expected: PASS, 11 testes.
 
 - [ ] **Step 6: Commit**
@@ -1209,7 +1216,7 @@ E mova o `import type { ServerResponse }` para junto dos outros imports no topo.
 - [ ] **Step 2: Criar `servidor/index.ts`**
 
 ```ts
-#!/usr/bin/env node
+#!/usr/bin/env -S node --experimental-strip-types
 import { resolve } from "node:path";
 import { criarServidor } from "./rotas.ts";
 import { observar } from "./watcher.ts";
@@ -1286,7 +1293,7 @@ Cria conta no diretório, email e acessos do cargo.
 
 Run:
 ```bash
-node servidor/index.ts serve exemplo/onboarding &
+node --experimental-strip-types servidor/index.ts serve exemplo/onboarding &
 sleep 1
 curl -s localhost:5174/api/grafo | head -c 400
 ```
@@ -2031,7 +2038,7 @@ Expected: sem saída.
 
 Run, em dois terminais:
 ```bash
-node servidor/index.ts serve exemplo/onboarding
+node --experimental-strip-types servidor/index.ts serve exemplo/onboarding
 npm run dev:web
 ```
 
@@ -2072,7 +2079,7 @@ Expected: PASS em todos os arquivos de `core/` e `servidor/`.
 Run:
 ```bash
 npm run build:web
-node servidor/index.ts serve exemplo/onboarding
+node --experimental-strip-types servidor/index.ts serve exemplo/onboarding
 ```
 Expected: `http://localhost:5174` abre o app completo, sem Vite rodando.
 
@@ -2093,7 +2100,7 @@ Node 22.18 ou maior (`node --version`).
 ```bash
 npm install
 npm run build:web
-node servidor/index.ts serve exemplo/onboarding
+node --experimental-strip-types servidor/index.ts serve exemplo/onboarding
 ```
 
 Abre em `http://localhost:5174`.
@@ -2101,7 +2108,7 @@ Abre em `http://localhost:5174`.
 Desenvolvimento, com recarga do front:
 
 ```bash
-node servidor/index.ts serve exemplo/onboarding   # terminal 1
+node --experimental-strip-types servidor/index.ts serve exemplo/onboarding   # terminal 1
 npm run dev:web                                   # terminal 2, abre em :5173
 ```
 
