@@ -1,0 +1,11 @@
+nome: Processo
+campos:
+  - { chave: responsavel, tipo: texto, obrigatorio: true }
+  - { chave: prazo, tipo: texto }
+  - { chave: status, tipo: enum, opcoes: [rascunho, ativo, bloqueado, concluido] }
+cor_por: status
+cores:
+  rascunho: "#9ca3af"
+  ativo: "#2563eb"
+  bloqueado: "#dc2626"
+  concluido: "#16a34a"
