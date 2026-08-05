@@ -132,6 +132,51 @@ test("PUT layout grava e volta no GET /api/grafo", async () => {
   await fechar();
 });
 
+test("PUT layout descarta entrada que não é posição", async () => {
+  const { base, fechar } = await subir();
+  await fetch(`${base}/api/layout`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ "01-a": { x: 5, y: 7 }, lixo: "nao-e-posicao", "02-b": { x: "abc", y: 1 } }),
+  });
+  const g = await (await fetch(`${base}/api/grafo`)).json();
+  assert.deepEqual(g.layout, { "01-a": { x: 5, y: 7 } });
+  await fechar();
+});
+
+test("nó inexistente dá 404 sem vazar caminho do disco", async () => {
+  const { base, fechar } = await subir();
+  const r = await fetch(`${base}/api/no/99-nao-existe`);
+  assert.equal(r.status, 404);
+  const { erro } = await r.json();
+  assert.equal(erro.includes("/"), false, `mensagem vazou caminho: ${erro}`);
+  await fechar();
+});
+
+test("PATCH em nó com frontmatter quebrado dá 409, não 500", async () => {
+  const { dir, base, fechar } = await subir();
+  await writeFile(join(dir, "03-c.md"), "---\na: [1, 2\n---\ncorpo\n");
+  const r = await fetch(`${base}/api/no/03-c`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ campos: { status: "ativo" } }),
+  });
+  assert.equal(r.status, 409);
+  await fechar();
+});
+
+test("pasta sem _grafo.yaml usa os padrões", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "grapy-sem-meta-"));
+  await writeFile(join(dir, "01-a.md"), "---\ntitulo: A\n---\ncorpo\n");
+  const servidor = criarServidor(dir);
+  await new Promise<void>((ok) => servidor.listen(0, ok));
+  const porta = (servidor.address() as { port: number }).port;
+  const g = await (await fetch(`http://127.0.0.1:${porta}/api/grafo`)).json();
+  assert.equal(g.titulo, "Sem título");
+  assert.equal(g.categoria.nome, "Processo");
+  await new Promise<void>((ok) => servidor.close(() => ok()));
+});
+
 test("rota inexistente sob /api dá 404", async () => {
   const { base, fechar } = await subir();
   assert.equal((await fetch(`${base}/api/nada`)).status, 404);

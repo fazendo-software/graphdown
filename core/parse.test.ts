@@ -77,6 +77,14 @@ test("editarCampo mantém CRLF em arquivo escrito no Windows", () => {
   assert.equal(saida.match(/(?<!\r)\n/g), null, "sobrou LF solto: arquivo virou EOL misto");
 });
 
+test("editarCampo não converte o arquivo inteiro por causa de um CRLF solto no corpo", () => {
+  const corpo = "linha um\r\nlinha dois\nlinha tres\n";
+  const nota = `---\ntitulo: X\nstatus: pendente\n---\n${corpo}`;
+  const saida = editarCampo(nota, "status", "ativo");
+  assert.ok(saida.endsWith(corpo), "corpo foi reescrito");
+  assert.match(saida, /^---\ntitulo: X\nstatus: ativo\n---\n/, "frontmatter mudou de EOL");
+});
+
 test("editarCampo mantém LF em arquivo unix", () => {
   const saida = editarCampo(NOTA, "prazo", "5d");
   assert.equal(saida.includes("\r\n"), false, "introduziu CRLF em arquivo LF");

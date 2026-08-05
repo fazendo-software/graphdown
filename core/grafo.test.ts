@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { construirGrafo, normalizarAresta } from "./grafo.ts";
+import { comoLista, construirGrafo, normalizarAresta } from "./grafo.ts";
 
 const no = (id: string, fm: string) => ({ id, texto: `---\n${fm}\n---\ncorpo\n` });
 
@@ -18,6 +18,20 @@ test("normalizarAresta aceita objeto com rótulo", () => {
 test("normalizarAresta descarta lixo", () => {
   assert.equal(normalizarAresta(42), null);
   assert.equal(normalizarAresta({ sem: "de" }), null);
+});
+
+test("comoLista trata escalar como lista de um item", () => {
+  // Quem consome depende_de (inclusive o front, ao ligar/desligar) tem que passar por aqui:
+  // ler direto com Array.isArray trataria `depende_de: a` como vazio e apagaria a aresta.
+  assert.deepEqual(comoLista("a"), ["a"]);
+  assert.deepEqual(comoLista(["a", "b"]), ["a", "b"]);
+  assert.deepEqual(comoLista(undefined), []);
+  assert.deepEqual(comoLista(null), []);
+});
+
+test("depende_de escalar vira aresta", () => {
+  const g = construirGrafo([no("a", "titulo: A"), no("b", "titulo: B\ndepende_de: a")]);
+  assert.deepEqual(g.arestas, [{ de: "a", para: "b", quando: undefined }]);
 });
 
 test("construirGrafo liga destino a origem", () => {

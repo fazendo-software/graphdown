@@ -24,10 +24,11 @@ export function editarCampo(texto: string, chave: string, valor: unknown): strin
   // usuario escreveu. A UI mostra o erro e pede correcao no editor de texto.
   if (erro) throw new Error(`frontmatter inválido: ${erro}`);
   doc.set(chave, valor);
-  const saida = serializarNota(doc, corpo);
-  // O serializador do `yaml` so emite LF. Arquivo escrito no Windows viraria EOL misto
-  // (frontmatter LF, corpo CRLF) e o diff acusaria todas as linhas do frontmatter.
-  return texto.includes("\r\n") ? saida.replace(/(?<!\r)\n/g, "\r\n") : saida;
+  // O serializador do `yaml` so emite LF. Se o frontmatter veio em CRLF, reaplicamos —
+  // e SO nele: o corpo e concatenado byte a byte como entrou, entao um CRLF solto colado
+  // no meio do texto do usuario nao reescreve o arquivo inteiro.
+  const fm = serializarNota(doc, "");
+  return (texto.startsWith("---\r\n") ? fm.replace(/\n/g, "\r\n") : fm) + corpo;
 }
 
 export function editarCorpo(texto: string, corpo: string): string {

@@ -4,13 +4,16 @@ import {
   Controls,
   MarkerType,
   ReactFlow,
+  applyEdgeChanges,
   applyNodeChanges,
   type Connection,
   type Edge,
+  type EdgeChange,
   type Node,
   type NodeChange,
 } from "@xyflow/react";
 import type { Layout } from "../../core/tipos.ts";
+import { comoLista, normalizarAresta } from "../../core/grafo.ts";
 import { api, type GrafoResposta } from "./api.ts";
 import { NoProcesso, type DadosNo } from "./NoProcesso.tsx";
 import { ArestaRough } from "./ArestaRough.tsx";
@@ -109,10 +112,37 @@ export function App() {
       if (!source || !target || source === target || !grafo) return;
       const alvo = grafo.nos.find((n) => n.id === target);
       if (!alvo) return;
-      const atual = Array.isArray(alvo.campos.depende_de) ? alvo.campos.depende_de : [];
-      if (atual.some((a) => a === source || (a as { de?: string })?.de === source)) return;
+      // comoLista, nao Array.isArray: `depende_de: 01-a` (escalar) e uma dependencia
+      // valida no core, e trata-la como lista vazia apagaria a aresta que ja existia.
+      const atual = comoLista(alvo.campos.depende_de);
+      if (atual.some((a) => normalizarAresta(a)?.de === source)) return;
       try {
         await api.patchNo(target, { depende_de: [...atual, source] });
+        await carregar();
+      } catch (e) {
+        setFalha((e as Error).message);
+      }
+    },
+    [grafo, carregar],
+  );
+
+  const aoMudarArestas = useCallback((mudancas: EdgeChange[]) => {
+    setArestas((atuais) => applyEdgeChanges(mudancas, atuais));
+  }, []);
+
+  // Desligar = tirar a origem do depende_de do destino. Nao ha rota de aresta.
+  const aoDesconectar = useCallback(
+    async (removidas: Edge[]) => {
+      if (!grafo) return;
+      try {
+        for (const { source, target } of removidas) {
+          const alvo = grafo.nos.find((n) => n.id === target);
+          if (!alvo) continue;
+          const restante = comoLista(alvo.campos.depende_de).filter(
+            (a) => normalizarAresta(a)?.de !== source,
+          );
+          await api.patchNo(target, { depende_de: restante });
+        }
         await carregar();
       } catch (e) {
         setFalha((e as Error).message);
@@ -145,8 +175,11 @@ export function App() {
         nodeTypes={tiposNo}
         edgeTypes={tiposAresta}
         onNodesChange={aoMudarNos}
+        onEdgesChange={aoMudarArestas}
+        onEdgesDelete={(e) => void aoDesconectar(e)}
         onConnect={(c) => void aoConectar(c)}
-        onNodeClick={(_, no) => setAberto(no.id)}
+        // Fantasma nao tem arquivo: abrir o modal so daria 404.
+        onNodeClick={(_, no) => setAberto((no.data as DadosNo).fantasma ? null : no.id)}
         onPaneClick={() => setAberto(null)}
         fitView
       >

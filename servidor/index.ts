@@ -14,6 +14,8 @@ const dir = resolve(alvo);
 const porta = Number(process.env.PORTA ?? 5174);
 
 observar(dir);
-criarServidor(dir).listen(porta, () => {
+// 127.0.0.1 e nao 0.0.0.0: nao ha autenticacao nenhuma, e as rotas escrevem e apagam
+// arquivos. Ninguem na mesma rede pode alcancar a pasta do usuario.
+criarServidor(dir).listen(porta, "127.0.0.1", () => {
   console.log(`grapydown  ${dir}\n           http://localhost:${porta}`);
 });

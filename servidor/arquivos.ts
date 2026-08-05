@@ -60,6 +60,9 @@ export async function gravarLayout(dir: string, layout: Layout): Promise<void> {
   // Uma linha por nó e chaves ordenadas: diff de git legível, merge resolvível à mão.
   const linhas = Object.keys(layout)
     .sort()
-    .map((id) => `  ${JSON.stringify(id)}: ${JSON.stringify(layout[id])}`);
+    // Entrada vinda da rede: so passa {x, y} finito. layout.json e versionado no git —
+    // um valor torto aqui vira NaN no canvas de quem der pull.
+    .filter((id) => Number.isFinite(layout[id]?.x) && Number.isFinite(layout[id]?.y))
+    .map((id) => `  ${JSON.stringify(id)}: ${JSON.stringify({ x: layout[id].x, y: layout[id].y })}`);
   await escrever(join(dir, OCULTA, "layout.json"), `{\n${linhas.join(",\n")}\n}\n`);
 }

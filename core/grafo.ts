@@ -12,7 +12,8 @@ export function normalizarAresta(entrada: unknown): { de: string; quando?: strin
   return null;
 }
 
-function comoLista(valor: unknown): unknown[] {
+/** `depende_de: 01-a` (escalar) vale tanto quanto uma lista de um item. */
+export function comoLista(valor: unknown): unknown[] {
   if (Array.isArray(valor)) return valor;
   return valor === undefined || valor === null ? [] : [valor];
 }

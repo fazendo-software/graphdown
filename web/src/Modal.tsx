@@ -63,7 +63,15 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
     <div className="modal-fundo" onClick={aoFechar}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         {!no ? (
-          <p>carregando…</p>
+          // A falha precisa aparecer aqui tambem: se o GET inicial quebrar, `no` fica null
+          // pra sempre e o usuario ficaria preso num "carregando…" sem botao de fechar.
+          <>
+            <p>{falha ? "não foi possível abrir este passo." : "carregando…"}</p>
+            {falha ? <p className="erro">{falha}</p> : null}
+            <div className="modal-acoes">
+              <button onClick={aoFechar}>fechar</button>
+            </div>
+          </>
         ) : no.erro ? (
           <>
             <h2>{id}</h2>
@@ -122,12 +130,19 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
               </>
             ) : (
               <div
+                className="detalhe"
                 onDoubleClick={() => {
                   setRascunho(no.corpo);
                   setEditandoCorpo(true);
                 }}
                 // seguro: markdown-it com html:false, conteudo vem de arquivo local do usuario
-                dangerouslySetInnerHTML={{ __html: md.render(no.corpo) }}
+                // Nó recem-criado tem corpo vazio: sem o placeholder o alvo do duplo-clique
+                // teria altura zero e nao daria pra escrever o detalhe pela UI.
+                dangerouslySetInnerHTML={{
+                  __html: no.corpo.trim()
+                    ? md.render(no.corpo)
+                    : '<p class="vazio">duplo-clique para escrever o detalhe</p>',
+                }}
               />
             )}
 

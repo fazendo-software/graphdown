@@ -17,6 +17,8 @@ body { margin: 0; }
   font: inherit; box-sizing: border-box;
 }
 .modal textarea { min-height: 180px; font-family: ui-monospace, monospace; }
+.modal .detalhe { min-height: 60px; cursor: text; }
+.modal .vazio { color: #a1a1aa; font-style: italic; }
 .modal-acoes { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 .modal button { padding: 8px 16px; border-radius: 6px; border: 1px solid #d4d4d8; cursor: pointer; }
 .perigo { color: #dc2626; border-color: #fca5a5; }

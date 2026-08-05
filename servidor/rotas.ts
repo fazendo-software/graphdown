@@ -54,6 +54,8 @@ async function lerMeta(dir: string): Promise<{ titulo: string; categoria: string
 }
 
 async function lerCategoria(nome: string) {
+  // `nome` vem do _grafo.yaml, que pode ter sido escrito por outra pessoa no repo clonado.
+  if (!idValido(nome)) return parseCategoria("");
   try {
     return parseCategoria(await readFile(join(RAIZ, "categorias", `${nome}.yaml`), "utf8"));
   } catch {
@@ -185,7 +187,16 @@ export function criarServidor(dir: string): Server {
 
       return json(res, 404, { erro: "rota não encontrada" });
     } catch (e) {
-      return json(res, 500, { erro: (e as Error).message });
+      // A mensagem crua do Node traz o caminho absoluto do arquivo e vai parar na barra
+      // de erro do canvas. Traduzimos o que o usuario pode resolver; o resto vira 500 seco.
+      const erro = e as NodeJS.ErrnoException;
+      if (erro.code === "ENOENT") return json(res, 404, { erro: "nó não encontrado" });
+      if (erro instanceof SyntaxError) return json(res, 400, { erro: "JSON inválido" });
+      if (erro.message?.startsWith("frontmatter inválido")) {
+        return json(res, 409, { erro: erro.message });
+      }
+      console.error(erro);
+      return json(res, 500, { erro: "erro interno do servidor" });
     }
   });
 }

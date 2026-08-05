@@ -21,7 +21,10 @@ export function avisarTodos(): void {
 }
 
 export function observar(dir: string): void {
-  watch(dir, { ignored: /(^|[/\\])\../, ignoreInitial: true, depth: 0 }).on(
+  // Sem `ignored`: o padrao de ponto casa contra o caminho absoluto, entao servir
+  // ~/.notes/processos desligaria o watcher inteiro em silencio. `depth: 0` ja impede
+  // descer em .grapydown/, e o filtro de .md abaixo cobre o resto.
+  watch(dir, { ignoreInitial: true, depth: 0 }).on(
     "all",
     async (evento, caminho) => {
       if (!caminho.endsWith(".md")) return;
