@@ -1,25 +1,42 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, type CSSProperties } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { retangulo, seedDoId } from "./rough.ts";
-
-export const LARGURA = 200;
-export const ALTURA = 76;
+import { desenharForma, seedDoId, tamanhoDe } from "./rough.ts";
 
 export type DadosNo = {
   titulo: string;
   cor: string;
+  forma: string;
   fantasma: boolean;
   erro?: string;
 };
 
+const CENTRADO: CSSProperties = {
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+};
+
+// Cada forma tem uma área útil diferente: no losango o texto só cabe na faixa do meio,
+// e no ator ele vai embaixo da figura.
+const RECUO: Record<string, CSSProperties> = {
+  losango: { ...CENTRADO, padding: "0 24%" },
+  estadio: { ...CENTRADO, padding: "0 18px" },
+  paralelogramo: { padding: "12px 26px" },
+  ator: { ...CENTRADO, alignItems: "flex-end", padding: "0 6px 6px" },
+};
+const RECUO_PADRAO: CSSProperties = { padding: "12px 14px" };
+
 function Componente({ id, data, selected }: NodeProps) {
-  const { titulo, cor, fantasma, erro } = data as DadosNo;
+  const { titulo, cor, forma, fantasma, erro } = data as DadosNo;
   const seed = useMemo(() => seedDoId(id), [id]);
+  const { largura, altura } = tamanhoDe(forma);
 
   // Depende so do que muda a forma. Arrastar move por transform CSS e nao re-desenha.
   const tracos = useMemo(
     () =>
-      retangulo(LARGURA, ALTURA, {
+      desenharForma(forma, {
         seed,
         roughness: 1.4,
         bowing: 1.2,
@@ -29,13 +46,13 @@ function Componente({ id, data, selected }: NodeProps) {
         fillStyle: "solid",
         strokeLineDash: fantasma || erro ? [8, 6] : undefined,
       }),
-    [seed, cor, selected, fantasma, erro],
+    [seed, forma, cor, selected, fantasma, erro],
   );
 
   return (
-    <div style={{ width: LARGURA, height: ALTURA, position: "relative" }}>
+    <div style={{ width: largura, height: altura, position: "relative" }}>
       <Handle type="target" position={Position.Top} />
-      <svg width={LARGURA} height={ALTURA} style={{ position: "absolute", inset: 0 }}>
+      <svg width={largura} height={altura} style={{ position: "absolute", inset: 0 }}>
         {tracos.map((t, i) => (
           <path key={i} d={t.d} stroke={t.stroke} fill={t.fill} strokeWidth={t.strokeWidth} />
         ))}
@@ -43,16 +60,18 @@ function Componente({ id, data, selected }: NodeProps) {
       <div
         style={{
           position: "relative",
-          padding: "12px 14px",
           fontSize: 14,
           lineHeight: 1.3,
           color: erro ? "#dc2626" : "#18181b",
           pointerEvents: "none",
+          ...(RECUO[forma] ?? RECUO_PADRAO),
         }}
       >
-        <strong>{titulo}</strong>
-        {erro ? <div style={{ fontSize: 11, marginTop: 4 }}>YAML inválido</div> : null}
-        {fantasma ? <div style={{ fontSize: 11, marginTop: 4 }}>arquivo não existe</div> : null}
+        <span>
+          <strong>{titulo}</strong>
+          {erro ? <div style={{ fontSize: 11, marginTop: 4 }}>YAML inválido</div> : null}
+          {fantasma ? <div style={{ fontSize: 11, marginTop: 4 }}>arquivo não existe</div> : null}
+        </span>
       </div>
       <Handle type="source" position={Position.Bottom} />
     </div>

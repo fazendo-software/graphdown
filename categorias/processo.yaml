@@ -1,11 +1,27 @@
 nome: Processo
 campos:
+  # `tipo` vem primeiro de proposito: templateNo preenche enum com opcoes[0].
+  - { chave: tipo, tipo: enum, opcoes: [passo, decisao, inicio, fim, ator] }
   - { chave: responsavel, tipo: texto, obrigatorio: true }
   - { chave: prazo, tipo: texto }
   - { chave: status, tipo: enum, opcoes: [rascunho, ativo, bloqueado, concluido] }
+
+forma_por: tipo
+formas:
+  passo: retangulo
+  decisao: losango
+  inicio: estadio
+  fim: estadio
+  ator: ator
+
 cor_por: status
 cores:
   rascunho: "#9ca3af"
   ativo: "#2563eb"
   bloqueado: "#dc2626"
   concluido: "#16a34a"
+
+arestas:
+  padrao: { estilo: continua, ponta: cheia, cor: "#52525b" }
+  excecao: { estilo: tracejada, ponta: aberta, cor: "#dc2626" }
+  dado: { estilo: pontilhada, ponta: nenhuma, cor: "#2563eb" }

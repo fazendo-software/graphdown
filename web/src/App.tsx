@@ -11,22 +11,58 @@ import {
   type EdgeChange,
   type Node,
   type NodeChange,
+  type ReactFlowInstance,
 } from "@xyflow/react";
-import type { Layout } from "../../core/tipos.ts";
+import type { Categoria, EstiloAresta, Layout, Posicao } from "../../core/tipos.ts";
 import { comoLista, normalizarAresta } from "../../core/grafo.ts";
 import { api, type GrafoResposta } from "./api.ts";
 import { NoProcesso, type DadosNo } from "./NoProcesso.tsx";
-import { ArestaRough } from "./ArestaRough.tsx";
+import { ArestaRough, ARESTA_PADRAO } from "./ArestaRough.tsx";
+import { PaletaFormas } from "./PaletaFormas.tsx";
+import { RodaFormas } from "./RodaFormas.tsx";
 import { completarLayout } from "./layoutAuto.ts";
+import { tamanhoDe } from "./rough.ts";
 import { Modal } from "./Modal.tsx";
 
 const tiposNo = { processo: NoProcesso };
 const tiposAresta = { rough: ArestaRough };
+const TIPO_ARRASTADO = "application/grapydown-tipo";
 
-function corDoNo(g: GrafoResposta, campos: Record<string, unknown>): string {
-  const chave = g.categoria.cor_por;
+function corDoNo(cat: Categoria, campos: Record<string, unknown>): string {
+  const chave = cat.cor_por;
   const valor = chave ? String(campos[chave] ?? "") : "";
-  return g.categoria.cores?.[valor] ?? "#52525b";
+  return cat.cores?.[valor] ?? "#52525b";
+}
+
+/** Forma desconhecida ou categoria sem `formas`: retângulo, como era antes. */
+function formaDoTipo(cat: Categoria, tipo: string): string {
+  return cat.formas?.[tipo] ?? "retangulo";
+}
+
+function formaDoNo(cat: Categoria, campos: Record<string, unknown>): string {
+  if (!cat.forma_por) return "retangulo";
+  return formaDoTipo(cat, String(campos[cat.forma_por] ?? ""));
+}
+
+function tiposDeForma(cat: Categoria): string[] {
+  return cat.campos.find((c) => c.chave === cat.forma_por)?.opcoes ?? [];
+}
+
+function estiloDaAresta(cat: Categoria, tipo?: string): Required<EstiloAresta> {
+  return {
+    ...ARESTA_PADRAO,
+    ...(cat.arestas?.padrao ?? {}),
+    ...((tipo ? cat.arestas?.[tipo] : undefined) ?? {}),
+  };
+}
+
+function marcadores(ponta: string, cor: string) {
+  const cheia = { type: MarkerType.ArrowClosed, color: cor };
+  const aberta = { type: MarkerType.Arrow, color: cor };
+  if (ponta === "nenhuma") return {};
+  if (ponta === "aberta") return { markerEnd: aberta };
+  if (ponta === "ambas") return { markerEnd: cheia, markerStart: cheia };
+  return { markerEnd: cheia };
 }
 
 function montar(g: GrafoResposta, layout: Layout): { nos: Node[]; arestas: Edge[] } {
@@ -35,7 +71,13 @@ function montar(g: GrafoResposta, layout: Layout): { nos: Node[]; arestas: Edge[
     id: n.id,
     type: "processo",
     position: layout[n.id] ?? { x: 0, y: 0 },
-    data: { titulo: n.titulo, cor: corDoNo(g, n.campos), fantasma: false, erro: n.erro } as DadosNo,
+    data: {
+      titulo: n.titulo,
+      cor: corDoNo(g.categoria, n.campos),
+      forma: formaDoNo(g.categoria, n.campos),
+      fantasma: false,
+      erro: n.erro,
+    } as DadosNo,
   }));
   for (const id of g.fantasmas) {
     if (reais.has(id)) continue;
@@ -43,17 +85,21 @@ function montar(g: GrafoResposta, layout: Layout): { nos: Node[]; arestas: Edge[
       id,
       type: "processo",
       position: layout[id] ?? { x: 0, y: 0 },
-      data: { titulo: id, cor: "#dc2626", fantasma: true } as DadosNo,
+      data: { titulo: id, cor: "#dc2626", forma: "retangulo", fantasma: true } as DadosNo,
     });
   }
-  const arestas: Edge[] = g.arestas.map((a) => ({
-    id: `${a.de}->${a.para}`,
-    source: a.de,
-    target: a.para,
-    type: "rough",
-    label: a.quando,
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#52525b" },
-  }));
+  const arestas: Edge[] = g.arestas.map((a) => {
+    const estilo = estiloDaAresta(g.categoria, a.tipo);
+    return {
+      id: `${a.de}->${a.para}`,
+      source: a.de,
+      target: a.para,
+      type: "rough",
+      label: a.quando,
+      data: estilo,
+      ...marcadores(estilo.ponta, estilo.cor),
+    };
+  });
   return { nos, arestas };
 }
 
@@ -62,14 +108,19 @@ export function App() {
   const [nos, setNos] = useState<Node[]>([]);
   const [arestas, setArestas] = useState<Edge[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [roda, setRoda] = useState<{ x: number; y: number; alvo: Posicao } | null>(null);
   const [falha, setFalha] = useState<string | null>(null);
   const timerLayout = useRef<number | undefined>(undefined);
+  // Guardar a instância evita envolver a árvore num <ReactFlowProvider> só pra usar
+  // screenToFlowPosition, que é o que useReactFlow exigiria.
+  const rf = useRef<ReactFlowInstance | null>(null);
 
   const carregar = useCallback(async () => {
     try {
       const g = await api.grafo();
       const ids = [...g.nos.map((n) => n.id), ...g.fantasmas];
-      const layout = completarLayout(ids, g.arestas, g.layout);
+      const forma = new Map(g.nos.map((n) => [n.id, formaDoNo(g.categoria, n.campos)]));
+      const layout = completarLayout(ids, g.arestas, g.layout, (id) => forma.get(id) ?? "retangulo");
       const montado = montar(g, layout);
       setGrafo(g);
       setNos(montado.nos);
@@ -89,6 +140,15 @@ export function App() {
     fonte.addEventListener("grafo-mudou", () => void carregar());
     return () => fonte.close();
   }, [carregar]);
+
+  useEffect(() => {
+    // Esc fecha o modal — o clique no vazio agora é da roda.
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAberto(null);
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, []);
 
   const aoMudarNos = useCallback((mudancas: NodeChange[]) => {
     setNos((atuais) => {
@@ -151,22 +211,41 @@ export function App() {
     [grafo, carregar],
   );
 
-  const aoCriar = useCallback(async () => {
-    const titulo = window.prompt("Título do novo passo:");
-    if (!titulo?.trim()) return;
-    try {
-      await api.criarNo(titulo.trim());
-      await carregar();
-    } catch (e) {
-      setFalha((e as Error).message);
-    }
-  }, [carregar]);
+  const criar = useCallback(
+    async (tipo: string, alvo: Posicao) => {
+      if (!grafo) return;
+      // O id do nó sai do título e o arquivo nunca é renomeado depois — por isso o título
+      // é perguntado agora, e não deixado como "sem título" pra corrigir no modal.
+      const titulo = window.prompt("Título do novo passo:")?.trim();
+      if (!titulo) return;
+      try {
+        const chave = grafo.categoria.forma_por;
+        const { id } = await api.criarNo(titulo, chave ? { [chave]: tipo } : undefined);
+        const { largura, altura } = tamanhoDe(formaDoTipo(grafo.categoria, tipo));
+        const layout: Layout = {};
+        for (const n of nos) {
+          layout[n.id] = { x: Math.round(n.position.x), y: Math.round(n.position.y) };
+        }
+        layout[id] = { x: Math.round(alvo.x - largura / 2), y: Math.round(alvo.y - altura / 2) };
+        await api.putLayout(layout);
+        await carregar();
+        setAberto(id);
+      } catch (e) {
+        setFalha((e as Error).message);
+      }
+    },
+    [grafo, nos, carregar],
+  );
+
+  const tipos = grafo ? tiposDeForma(grafo.categoria) : [];
 
   return (
     <div className="tela">
       <div className="barra">
         <strong>{grafo?.titulo ?? "carregando…"}</strong>
-        <button onClick={() => void aoCriar()}>+ passo</button>
+        {grafo ? (
+          <PaletaFormas tipos={tipos} formaDoTipo={(t) => formaDoTipo(grafo.categoria, t)} />
+        ) : null}
         {falha ? <span className="erro">{falha}</span> : null}
       </div>
       <ReactFlow
@@ -174,18 +253,46 @@ export function App() {
         edges={arestas}
         nodeTypes={tiposNo}
         edgeTypes={tiposAresta}
+        onInit={(inst) => (rf.current = inst)}
         onNodesChange={aoMudarNos}
         onEdgesChange={aoMudarArestas}
         onEdgesDelete={(e) => void aoDesconectar(e)}
         onConnect={(c) => void aoConectar(c)}
         // Fantasma nao tem arquivo: abrir o modal so daria 404.
         onNodeClick={(_, no) => setAberto((no.data as DadosNo).fantasma ? null : no.id)}
-        onPaneClick={() => setAberto(null)}
+        onPaneClick={(e) => {
+          if (tipos.length === 0 || !rf.current) return;
+          const alvo = rf.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+          setRoda({ x: e.clientX, y: e.clientY, alvo });
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const tipo = e.dataTransfer.getData(TIPO_ARRASTADO);
+          if (!tipo || !rf.current) return;
+          void criar(tipo, rf.current.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+        }}
         fitView
       >
         <Background />
         <Controls />
       </ReactFlow>
+      {roda && grafo ? (
+        <RodaFormas
+          x={roda.x}
+          y={roda.y}
+          tipos={tipos}
+          formaDoTipo={(t) => formaDoTipo(grafo.categoria, t)}
+          aoEscolher={(tipo) => {
+            setRoda(null);
+            void criar(tipo, roda.alvo);
+          }}
+          aoFechar={() => setRoda(null)}
+        />
+      ) : null}
       {aberto && grafo ? (
         <Modal
           id={aberto}

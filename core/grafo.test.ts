@@ -5,14 +5,27 @@ import { comoLista, construirGrafo, normalizarAresta } from "./grafo.ts";
 const no = (id: string, fm: string) => ({ id, texto: `---\n${fm}\n---\ncorpo\n` });
 
 test("normalizarAresta aceita string", () => {
-  assert.deepEqual(normalizarAresta("a"), { de: "a", quando: undefined });
+  assert.deepEqual(normalizarAresta("a"), { de: "a", quando: undefined, tipo: undefined });
 });
 
 test("normalizarAresta aceita objeto com rótulo", () => {
   assert.deepEqual(normalizarAresta({ de: "a", quando: "rejeitado" }), {
     de: "a",
     quando: "rejeitado",
+    tipo: undefined,
   });
+});
+
+test("normalizarAresta preserva o tipo", () => {
+  assert.deepEqual(normalizarAresta({ de: "a", tipo: "excecao" }), {
+    de: "a",
+    quando: undefined,
+    tipo: "excecao",
+  });
+});
+
+test("normalizarAresta descarta tipo que não é string", () => {
+  assert.equal(normalizarAresta({ de: "a", tipo: 42 })?.tipo, undefined);
 });
 
 test("normalizarAresta descarta lixo", () => {
@@ -31,7 +44,7 @@ test("comoLista trata escalar como lista de um item", () => {
 
 test("depende_de escalar vira aresta", () => {
   const g = construirGrafo([no("a", "titulo: A"), no("b", "titulo: B\ndepende_de: a")]);
-  assert.deepEqual(g.arestas, [{ de: "a", para: "b", quando: undefined }]);
+  assert.deepEqual(g.arestas, [{ de: "a", para: "b", quando: undefined, tipo: undefined }]);
 });
 
 test("construirGrafo liga destino a origem", () => {
@@ -40,8 +53,16 @@ test("construirGrafo liga destino a origem", () => {
     no("b", "titulo: B\ndepende_de:\n  - a"),
   ]);
   assert.equal(g.nos.length, 2);
-  assert.deepEqual(g.arestas, [{ de: "a", para: "b", quando: undefined }]);
+  assert.deepEqual(g.arestas, [{ de: "a", para: "b", quando: undefined, tipo: undefined }]);
   assert.deepEqual(g.fantasmas, []);
+});
+
+test("construirGrafo propaga o tipo da aresta", () => {
+  const g = construirGrafo([
+    no("a", "titulo: A"),
+    no("b", "titulo: B\ndepende_de:\n  - { de: a, tipo: excecao }"),
+  ]);
+  assert.equal(g.arestas[0].tipo, "excecao");
 });
 
 test("titulo ausente cai para o id", () => {

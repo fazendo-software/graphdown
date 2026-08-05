@@ -28,8 +28,11 @@ async function pedir<T>(rota: string, init?: RequestInit): Promise<T> {
 export const api = {
   grafo: () => pedir<GrafoResposta>("/api/grafo"),
   no: (id: string) => pedir<NoDetalhe>(`/api/no/${encodeURIComponent(id)}`),
-  criarNo: (titulo: string) =>
-    pedir<{ id: string }>("/api/no", { method: "POST", body: JSON.stringify({ titulo }) }),
+  criarNo: (titulo: string, campos?: Record<string, unknown>) =>
+    pedir<{ id: string }>("/api/no", {
+      method: "POST",
+      body: JSON.stringify({ titulo, campos }),
+    }),
   patchNo: (id: string, campos: Record<string, unknown>) =>
     pedir<{ ok: true }>(`/api/no/${encodeURIComponent(id)}`, {
       method: "PATCH",

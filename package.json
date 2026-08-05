@@ -4,7 +4,7 @@
   "type": "module",
   "bin": { "grapydown": "./servidor/index.ts" },
   "scripts": {
-    "test": "node --experimental-strip-types --test \"core/*.test.ts\" \"servidor/*.test.ts\"",
+    "test": "node --experimental-strip-types --test \"core/*.test.ts\" \"servidor/*.test.ts\" \"web/src/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc -p web --noEmit",
     "dev:web": "vite --config web/vite.config.ts",
     "build:web": "vite build --config web/vite.config.ts",

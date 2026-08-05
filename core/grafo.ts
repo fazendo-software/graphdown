@@ -1,12 +1,18 @@
 import { parseNota } from "./parse.ts";
 import type { Aresta, Grafo, No } from "./tipos.ts";
 
-export function normalizarAresta(entrada: unknown): { de: string; quando?: string } | null {
-  if (typeof entrada === "string") return { de: entrada, quando: undefined };
+export function normalizarAresta(
+  entrada: unknown,
+): { de: string; quando?: string; tipo?: string } | null {
+  if (typeof entrada === "string") return { de: entrada, quando: undefined, tipo: undefined };
   if (entrada !== null && typeof entrada === "object") {
-    const o = entrada as { de?: unknown; quando?: unknown };
+    const o = entrada as { de?: unknown; quando?: unknown; tipo?: unknown };
     if (typeof o.de === "string") {
-      return { de: o.de, quando: typeof o.quando === "string" ? o.quando : undefined };
+      return {
+        de: o.de,
+        quando: typeof o.quando === "string" ? o.quando : undefined,
+        tipo: typeof o.tipo === "string" ? o.tipo : undefined,
+      };
     }
   }
   return null;
@@ -38,7 +44,7 @@ export function construirGrafo(arquivos: { id: string; texto: string }[]): Grafo
       const a = normalizarAresta(bruta);
       if (!a) continue;
       if (!existentes.has(a.de)) fantasmas.add(a.de);
-      arestas.push({ de: a.de, para: id, quando: a.quando });
+      arestas.push({ de: a.de, para: id, quando: a.quando, tipo: a.tipo });
     }
   }
 

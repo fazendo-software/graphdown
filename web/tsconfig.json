@@ -8,7 +8,9 @@
     "strict": true,
     "jsx": "react-jsx",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": [],
+    // node só por causa dos *.test.ts, que rodam no node:test. O código de app usa
+    // window.setTimeout explicitamente pra não pegar a assinatura do Node por engano.
+    "types": ["node"],
     "verbatimModuleSyntax": true
   },
   "include": ["src"]

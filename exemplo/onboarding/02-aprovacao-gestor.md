@@ -1,5 +1,6 @@
 ---
 titulo: Aprovação do gestor
+tipo: passo
 responsavel: gestor-direto
 prazo: 2d
 status: ativo

@@ -126,7 +126,10 @@ export function criarServidor(dir: string): Server {
       }
 
       if (rota === "/api/no" && metodo === "POST") {
-        const { titulo } = (await corpoJson(req)) as { titulo?: string };
+        const { titulo, campos } = (await corpoJson(req)) as {
+          titulo?: string;
+          campos?: Record<string, unknown>;
+        };
         if (!titulo) return json(res, 400, { erro: "titulo obrigatório" });
         const meta = await lerMeta(dir);
         const categoria = await lerCategoria(meta.categoria);
@@ -134,7 +137,15 @@ export function criarServidor(dir: string): Server {
         const base = idDeTitulo(titulo);
         let id = base;
         for (let n = 2; existentes.has(id); n++) id = `${base}-${n}`;
-        await escrever(caminhoNo(dir, id), templateNo(categoria, titulo));
+        // `campos` sobrescreve o template. Sem isso, criar um losango pela paleta seria
+        // POST seguido de PATCH imediato — duas escritas no mesmo arquivo recem-criado.
+        let texto = templateNo(categoria, titulo);
+        if (campos && typeof campos === "object" && !Array.isArray(campos)) {
+          for (const [chave, valor] of Object.entries(campos)) {
+            texto = editarCampo(texto, chave, valor);
+          }
+        }
+        await escrever(caminhoNo(dir, id), texto);
         return json(res, 201, { id });
       }
 

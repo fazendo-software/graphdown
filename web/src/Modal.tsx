@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import MarkdownIt from "markdown-it";
 import type { Categoria } from "../../core/tipos.ts";
+import { comoLista, normalizarAresta } from "../../core/grafo.ts";
 import { api, type NoDetalhe } from "./api.ts";
 
 const md = new MarkdownIt({ html: false, linkify: true });
+
+type Dependencia = { de: string; quando?: string; tipo?: string };
+
+/** Volta ao formato do arquivo: string quando não há mais nada, objeto quando há. */
+function paraFrontmatter(d: Dependencia): unknown {
+  if (!d.quando && !d.tipo) return d.de;
+  return { de: d.de, ...(d.quando ? { quando: d.quando } : {}), ...(d.tipo ? { tipo: d.tipo } : {}) };
+}
 
 type Props = {
   id: string;
@@ -11,6 +20,54 @@ type Props = {
   aoFechar: () => void;
   aoMudar: () => void;
 };
+
+function Dependencias({
+  lista,
+  tipos,
+  aoSalvar,
+}: {
+  lista: Dependencia[];
+  tipos: string[];
+  aoSalvar: (lista: Dependencia[]) => void;
+}) {
+  if (lista.length === 0) return null;
+  return (
+    <>
+      <label>depende de</label>
+      <ul className="deps">
+        {lista.map((d, i) => (
+          <li key={`${d.de}-${i}`}>
+            <code>{d.de}</code>
+            {tipos.length > 0 ? (
+              <select
+                value={d.tipo ?? "padrao"}
+                aria-label={`tipo da aresta vinda de ${d.de}`}
+                onChange={(e) => {
+                  const tipo = e.target.value === "padrao" ? undefined : e.target.value;
+                  aoSalvar(lista.map((x, j) => (i === j ? { ...x, tipo } : x)));
+                }}
+              >
+                {tipos.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <button
+              type="button"
+              className="perigo"
+              title="remover dependência"
+              onClick={() => aoSalvar(lista.filter((_, j) => j !== i))}
+            >
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
 
 export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
   const [no, setNo] = useState<NoDetalhe | null>(null);
@@ -42,6 +99,16 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
       await api.putCorpo(id, rascunho.endsWith("\n") ? rascunho : `${rascunho}\n`);
       setNo(await api.no(id));
       setEditandoCorpo(false);
+      aoMudar();
+    } catch (e) {
+      setFalha((e as Error).message);
+    }
+  }
+
+  async function salvarDependencias(lista: Dependencia[]) {
+    try {
+      await api.patchNo(id, { depende_de: lista.map(paraFrontmatter) });
+      setNo(await api.no(id));
       aoMudar();
     } catch (e) {
       setFalha((e as Error).message);
@@ -118,6 +185,14 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
                 </div>
               );
             })}
+
+            <Dependencias
+              lista={comoLista(no.campos.depende_de)
+                .map(normalizarAresta)
+                .filter((d): d is Dependencia => d !== null)}
+              tipos={Object.keys(categoria.arestas ?? {})}
+              aoSalvar={(lista) => void salvarDependencias(lista)}
+            />
 
             <label>detalhe</label>
             {editandoCorpo ? (

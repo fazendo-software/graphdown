@@ -101,6 +101,20 @@ test("POST cria nó a partir do template da categoria", async () => {
   await fechar();
 });
 
+test("POST com campos sobrescreve o template", async () => {
+  const { dir, base, fechar } = await subir();
+  const r = await fetch(`${base}/api/no`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ titulo: "Aprovou?", campos: { tipo: "decisao" } }),
+  });
+  assert.equal(r.status, 201);
+  const texto = await readFile(join(dir, "aprovou.md"), "utf8");
+  assert.match(texto, /tipo: decisao/);
+  assert.match(texto, /titulo: Aprovou\?/);
+  await fechar();
+});
+
 test("POST com título repetido não sobrescreve", async () => {
   const { base, fechar } = await subir();
   const corpo = JSON.stringify({ titulo: "Repetido" });

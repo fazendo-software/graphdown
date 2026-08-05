@@ -8,6 +8,9 @@ export function parseCategoria(texto: string): Categoria {
     campos: Array.isArray(cru.campos) ? (cru.campos as CampoCategoria[]) : [],
     cor_por: cru.cor_por,
     cores: cru.cores,
+    forma_por: cru.forma_por,
+    formas: cru.formas,
+    arestas: cru.arestas,
   };
 }
 

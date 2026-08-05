@@ -1,4 +1,10 @@
-export type Aresta = { de: string; para: string; quando?: string };
+export type Aresta = { de: string; para: string; quando?: string; tipo?: string };
+
+export type EstiloAresta = {
+  estilo?: "continua" | "tracejada" | "pontilhada";
+  ponta?: "cheia" | "aberta" | "nenhuma" | "ambas";
+  cor?: string;
+};
 
 export type No = {
   id: string;
@@ -25,6 +31,9 @@ export type Categoria = {
   campos: CampoCategoria[];
   cor_por?: string;
   cores?: Record<string, string>;
+  forma_por?: string;
+  formas?: Record<string, string>;
+  arestas?: Record<string, EstiloAresta>;
 };
 
 export type Posicao = { x: number; y: number };

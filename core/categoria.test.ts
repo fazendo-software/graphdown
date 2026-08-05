@@ -25,6 +25,31 @@ test("parseCategoria tolera arquivo vazio", () => {
   assert.deepEqual(c.campos, []);
 });
 
+test("parseCategoria lê forma_por, formas e arestas", () => {
+  const c = parseCategoria(`${YAML_CAT}
+forma_por: tipo
+formas:
+  decisao: losango
+arestas:
+  excecao: { estilo: tracejada, ponta: aberta, cor: "#dc2626" }
+`);
+  assert.equal(c.forma_por, "tipo");
+  assert.equal(c.formas!.decisao, "losango");
+  assert.deepEqual(c.arestas!.excecao, {
+    estilo: "tracejada",
+    ponta: "aberta",
+    cor: "#dc2626",
+  });
+});
+
+test("parseCategoria de categoria antiga não inventa formas nem arestas", () => {
+  // Compatibilidade: as 3 chaves são opcionais e o canvas cai no padrão sem elas.
+  const c = parseCategoria(YAML_CAT);
+  assert.equal(c.forma_por, undefined);
+  assert.equal(c.formas, undefined);
+  assert.equal(c.arestas, undefined);
+});
+
 test("templateNo gera frontmatter com todos os campos da categoria", () => {
   const texto = templateNo(parseCategoria(YAML_CAT), "Aprovação do gestor");
   assert.match(texto, /^---\n/);
