@@ -16,6 +16,8 @@ não no desenho.
 2. "Ator" é uma forma de nó, não uma raia — continua sendo um arquivo `.md` que se liga aos
    passos como qualquer outro.
 3. Aresta ganha três eixos de aparência: estilo de linha, ponta e cor.
+4. Duas formas de criar nó pelo desenho: uma paleta fixa de figuras (arrastar e soltar) e uma
+   roda que abre no clique esquerdo do canvas vazio.
 
 ## Não-objetivos
 
@@ -187,6 +189,48 @@ aresta (hoje só pelo teclado).
 Os dados já estão no modal: `no.campos.depende_de` e `categoria`. Leitura via `comoLista` +
 `normalizarAresta` do core, como `App.tsx` já faz.
 
+### Paleta de figuras
+
+`web/src/PaletaFormas.tsx`, na barra superior: um item por valor do campo apontado por
+`forma_por`, cada um com uma miniatura desenhada pelo próprio `rough.ts` num SVG de ~40px —
+o desenho da paleta e o do canvas nunca divergem porque saem da mesma função.
+
+O item é `draggable`; `onDragStart` põe o valor do `tipo` no `dataTransfer`. O `<ReactFlow>`
+ganha `onDragOver` (com `preventDefault`) e `onDrop`, que converte a posição do ponteiro com
+`screenToFlowPosition` e cria o nó ali.
+
+O botão `+ passo` sai: a paleta cobre o caso e não obriga a escolher o tipo depois.
+
+### Roda de figuras
+
+`web/src/RodaFormas.tsx`. Clique esquerdo no canvas vazio abre a roda no ponto clicado;
+escolher a figura cria o nó naquela posição. Fecha com Esc, com clique fora, ou ao escolher.
+
+Não são setores SVG: são N botões redondos posicionados em círculo com
+`transform: translate(cos·r, sin·r)`, raio 70px, cada um com a mesma miniatura da paleta.
+Muito menos código que fatias de pizza, mesma sensação de uso.
+
+**Consequência no clique:** `onPaneClick` deixa de fechar o modal. Fechar passa a ser Esc ou
+clique no fundo escuro — esse último já funciona hoje.
+
+### Criar nó com posição e tipo
+
+Duas mudanças pequenas, nenhuma rota nova:
+
+1. `POST /api/no` passa a aceitar `campos?: Record<string, unknown>`, mesclado por cima do
+   `templateNo`. Sem isso, criar um losango exigiria POST seguido de PATCH imediato.
+2. Sequência no front: `POST` → `PUT /api/layout` com o layout atual mais a posição nova →
+   `carregar()` → abre o modal do nó recém-criado.
+
+O `window.prompt` do título some. O nó nasce com um título padrão derivado do tipo
+(`"Novo passo"`, `"Nova decisão"`…) e o modal abre em seguida para renomear. Prompt bloqueante
+no meio de um gesto de arrastar seria pior.
+
+**Acesso à instância do React Flow:** `screenToFlowPosition` vem de `useReactFlow()`, que
+exige um `<ReactFlowProvider>` acima na árvore. Em vez de reestruturar `App`, a instância é
+guardada com `onInit={(inst) => (rf.current = inst)}` — uma linha, e serve tanto para o drop
+quanto para a roda.
+
 ## Compatibilidade
 
 Nenhum arquivo existente muda:
@@ -204,8 +248,11 @@ Nenhum arquivo existente muda:
 - `web/src/rough.test.ts` (novo) — cada forma devolve traços não vazios e contidos no box.
   `rough.ts` não tem JSX, então roda no `node:test`; o glob do `npm test` ganha
   `web/src/*.test.ts`
+- `servidor/rotas.test.ts` — `POST /api/no` com `campos` grava o tipo escolhido, e sem
+  `campos` continua caindo no template
 - manual: estender `exemplo/onboarding` com um nó `inicio`, um `decisao`, um `ator` e uma
-  aresta `excecao`
+  aresta `excecao`; arrastar da paleta e criar pela roda, conferindo que o nó nasce onde foi
+  solto e com o tipo certo
 
 ## Arquivos afetados
 
@@ -217,9 +264,14 @@ categorias/processo.yaml
 web/src/rough.ts       losango, estadio, paralelogramo, ator
 web/src/NoProcesso.tsx TAMANHOS, escolha de forma, recuo de texto por forma
 web/src/ArestaRough.tsx estilo/ponta/cor + style no BaseEdge
-web/src/App.tsx        montar() resolve forma e estilo de aresta; tamanhos para o layout
+web/src/App.tsx        montar() resolve forma e estilo de aresta; tamanhos para o layout;
+                       onDrop/onDragOver, roda no onPaneClick, ref da instância
 web/src/layoutAuto.ts  recebe tamanhos por id
 web/src/Modal.tsx      seção "depende de"
+web/src/PaletaFormas.tsx  (novo) paleta arrastável na barra
+web/src/RodaFormas.tsx    (novo) roda radial no clique do canvas
+web/src/estilo.css     paleta, roda, seção "depende de"
+servidor/rotas.ts      POST /api/no aceita `campos`
 exemplo/onboarding/    nós novos cobrindo as formas e a aresta de exceção
 ```
 
@@ -232,3 +284,6 @@ exemplo/onboarding/    nós novos cobrindo as formas e a aresta de exceção
   a seta encosta ligeiramente fora do traço. Aceito no v1.
 - **dagre com tamanhos mistos.** Já suportado (`setNode` recebe width/height por nó); o risco
   é só de espaçamento feio, não de sobreposição.
+- **Clique no vazio passa a ter efeito visível.** Quem só queria desmarcar vai abrir a roda
+  sem querer. Custo de erro é baixo (Esc ou clique fora), mas se incomodar na prática o gesto
+  vira duplo clique — troca de uma linha.
