@@ -6,10 +6,9 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "strict": true,
-    "jsx": "react-jsx",
     "lib": ["ES2023", "DOM"],
     "types": ["node"],
     "verbatimModuleSyntax": true
   },
-  "include": ["core", "servidor", "web/src"]
+  "include": ["core", "servidor", "web/vite.config.ts"]
 }
