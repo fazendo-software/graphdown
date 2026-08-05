@@ -24,6 +24,7 @@ import { RodaFormas } from "./RodaFormas.tsx";
 import { completarLayout } from "./layoutAuto.ts";
 import { tamanhoDe } from "./rough.ts";
 import { Modal } from "./Modal.tsx";
+import { ModalAresta } from "./ModalAresta.tsx";
 
 const tiposNo = { processo: NoProcesso };
 const tiposAresta = { rough: ArestaRough };
@@ -109,6 +110,7 @@ export function App() {
   const [nos, setNos] = useState<Node[]>([]);
   const [arestas, setArestas] = useState<Edge[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [arestaAberta, setArestaAberta] = useState<{ de: string; para: string } | null>(null);
   const [roda, setRoda] = useState<{ x: number; y: number; alvo: Posicao } | null>(null);
   const [falha, setFalha] = useState<string | null>(null);
   const timerLayout = useRef<number | undefined>(undefined);
@@ -145,7 +147,9 @@ export function App() {
   useEffect(() => {
     // Esc fecha o modal — o clique no vazio agora é da roda.
     const tecla = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setAberto(null);
+      if (e.key !== "Escape") return;
+      setAberto(null);
+      setArestaAberta(null);
     };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
@@ -289,7 +293,11 @@ export function App() {
         deleteKeyCode={["Delete", "Backspace"]}
         // Fantasma nao tem arquivo: abrir o modal so daria 404.
         onNodeClick={(_, no) => setAberto((no.data as DadosNo).fantasma ? null : no.id)}
-        onPaneClick={() => setAberto(null)}
+        onEdgeClick={(_, a) => setArestaAberta({ de: a.source, para: a.target })}
+        onPaneClick={() => {
+          setAberto(null);
+          setArestaAberta(null);
+        }}
         onPaneContextMenu={(e) => {
           e.preventDefault();
           if (tipos.length === 0 || !rf.current) return;
@@ -323,6 +331,15 @@ export function App() {
             void criar(tipo, roda.alvo);
           }}
           aoFechar={() => setRoda(null)}
+        />
+      ) : null}
+      {arestaAberta && grafo ? (
+        <ModalAresta
+          de={arestaAberta.de}
+          para={arestaAberta.para}
+          categoria={grafo.categoria}
+          aoFechar={() => setArestaAberta(null)}
+          aoMudar={() => void carregar()}
         />
       ) : null}
       {aberto && grafo ? (

@@ -28,6 +28,7 @@ body { margin: 0; }
 .modal button { padding: 8px 16px; border-radius: 6px; border: 1px solid #d4d4d8; cursor: pointer; }
 .perigo { color: #dc2626; border-color: #fca5a5; }
 .erro { color: #dc2626; font-size: 13px; margin-top: 8px; }
+.modal .dica { color: #71717a; font-size: 12px; margin: 16px 0 0; }
 .barra {
   position: absolute; top: 12px; left: 12px; z-index: 5;
   background: #fff; padding: 8px 12px; border-radius: 8px;

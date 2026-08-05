@@ -1,18 +1,10 @@
 import { useEffect, useState } from "react";
 import MarkdownIt from "markdown-it";
 import type { Categoria } from "../../core/tipos.ts";
-import { comoLista, normalizarAresta } from "../../core/grafo.ts";
 import { api, type NoDetalhe } from "./api.ts";
+import { lerDeps, salvarDeps, type Dependencia } from "./deps.ts";
 
 const md = new MarkdownIt({ html: false, linkify: true });
-
-type Dependencia = { de: string; quando?: string; tipo?: string };
-
-/** Volta ao formato do arquivo: string quando não há mais nada, objeto quando há. */
-function paraFrontmatter(d: Dependencia): unknown {
-  if (!d.quando && !d.tipo) return d.de;
-  return { de: d.de, ...(d.quando ? { quando: d.quando } : {}), ...(d.tipo ? { tipo: d.tipo } : {}) };
-}
 
 type Props = {
   id: string;
@@ -107,7 +99,7 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
 
   async function salvarDependencias(lista: Dependencia[]) {
     try {
-      await api.patchNo(id, { depende_de: lista.map(paraFrontmatter) });
+      await salvarDeps(id, lista);
       setNo(await api.no(id));
       aoMudar();
     } catch (e) {
@@ -187,9 +179,7 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
             })}
 
             <Dependencias
-              lista={comoLista(no.campos.depende_de)
-                .map(normalizarAresta)
-                .filter((d): d is Dependencia => d !== null)}
+              lista={lerDeps(no.campos)}
               tipos={Object.keys(categoria.arestas ?? {})}
               aoSalvar={(lista) => void salvarDependencias(lista)}
             />
