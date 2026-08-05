@@ -1,0 +1,28 @@
+:root { font-family: system-ui, sans-serif; }
+body { margin: 0; }
+#raiz, .tela { width: 100vw; height: 100vh; }
+
+.modal-fundo {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4);
+  display: flex; align-items: center; justify-content: center; z-index: 10;
+}
+.modal {
+  background: #fff; border-radius: 10px; padding: 24px;
+  width: min(640px, 92vw); max-height: 85vh; overflow: auto;
+}
+.modal h2 { margin: 0 0 16px; }
+.modal label { display: block; margin: 12px 0 4px; font-size: 13px; color: #555; }
+.modal input, .modal select, .modal textarea {
+  width: 100%; padding: 8px; border: 1px solid #d4d4d8; border-radius: 6px;
+  font: inherit; box-sizing: border-box;
+}
+.modal textarea { min-height: 180px; font-family: ui-monospace, monospace; }
+.modal-acoes { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.modal button { padding: 8px 16px; border-radius: 6px; border: 1px solid #d4d4d8; cursor: pointer; }
+.perigo { color: #dc2626; border-color: #fca5a5; }
+.erro { color: #dc2626; font-size: 13px; margin-top: 8px; }
+.barra {
+  position: absolute; top: 12px; left: 12px; z-index: 5;
+  background: #fff; padding: 8px 12px; border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15); display: flex; gap: 12px; align-items: center;
+}
