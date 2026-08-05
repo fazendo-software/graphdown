@@ -1,19 +1,62 @@
-:root { font-family: system-ui, sans-serif; }
-body { margin: 0; }
+/* Uma variável por papel, não por cor: trocar o tema é trocar este bloco.
+   O App põe data-tema no <html> e o React Flow recebe colorMode no mesmo estado. */
+:root {
+  font-family: system-ui, sans-serif;
+  color-scheme: light;
+  --fundo: #ffffff;
+  --fundo-2: #fafafa;
+  --fundo-3: #eff6ff;
+  --texto: #18181b;
+  --texto-2: #52525b;
+  --texto-3: #71717a;
+  --texto-4: #a1a1aa;
+  --borda: #d4d4d8;
+  --borda-2: #e4e4e7;
+  --acento: #2563eb;
+  --acento-texto: #ffffff;
+  --perigo: #dc2626;
+  --perigo-borda: #fca5a5;
+  --sombra: rgba(0, 0, 0, 0.15);
+  --sombra-2: rgba(0, 0, 0, 0.18);
+  --veu: rgba(0, 0, 0, 0.4);
+}
+
+:root[data-tema="escuro"] {
+  color-scheme: dark;
+  --fundo: #1c1c1f;
+  --fundo-2: #232327;
+  --fundo-3: #1e293b;
+  --texto: #e4e4e7;
+  --texto-2: #a1a1aa;
+  --texto-3: #8b8b93;
+  --texto-4: #71717a;
+  --borda: #3f3f46;
+  --borda-2: #2e2e33;
+  --acento: #60a5fa;
+  --acento-texto: #0b0b0d;
+  --perigo: #f87171;
+  --perigo-borda: #7f1d1d;
+  --sombra: rgba(0, 0, 0, 0.5);
+  --sombra-2: rgba(0, 0, 0, 0.6);
+  --veu: rgba(0, 0, 0, 0.6);
+}
+
+body { margin: 0; background: var(--fundo); color: var(--texto); }
 #raiz, .tela { width: 100vw; height: 100vh; }
 
 .modal-fundo {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4);
+  position: fixed; inset: 0; background: var(--veu);
   display: flex; align-items: center; justify-content: center; z-index: 10;
 }
 .modal {
-  background: #fff; border-radius: 10px; padding: 24px;
+  background: var(--fundo); color: var(--texto); border-radius: 10px; padding: 24px;
   width: min(640px, 92vw); max-height: 85vh; overflow: auto;
 }
 .modal h2 { margin: 0 0 16px; }
-.modal label { display: block; margin: 12px 0 4px; font-size: 13px; color: #555; }
+.modal label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--texto-2); }
 .modal input, .modal select, .modal textarea {
-  width: 100%; padding: 8px; border: 1px solid #d4d4d8; border-radius: 6px;
+  width: 100%; padding: 8px; border: 1px solid var(--borda); border-radius: 6px;
+  background: var(--fundo); color: var(--texto);
   font: inherit; box-sizing: border-box;
 }
 .modal textarea { min-height: 180px; font-family: ui-monospace, monospace; }
@@ -23,42 +66,48 @@ body { margin: 0; }
 .modal .deps select { width: auto; }
 .modal .deps button { padding: 2px 10px; line-height: 1.2; }
 .modal .detalhe { min-height: 60px; cursor: text; }
-.modal .vazio { color: #a1a1aa; font-style: italic; }
+.modal .vazio { color: var(--texto-4); font-style: italic; }
 .modal-acoes { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
-.modal button { padding: 8px 16px; border-radius: 6px; border: 1px solid #d4d4d8; cursor: pointer; }
-.perigo { color: #dc2626; border-color: #fca5a5; }
-.erro { color: #dc2626; font-size: 13px; margin-top: 8px; }
-.modal .dica { color: #71717a; font-size: 12px; margin: 16px 0 0; }
+.modal button {
+  padding: 8px 16px; border-radius: 6px; border: 1px solid var(--borda);
+  background: var(--fundo); color: var(--texto); cursor: pointer;
+}
+.perigo { color: var(--perigo); border-color: var(--perigo-borda); }
+.erro { color: var(--perigo); font-size: 13px; margin-top: 8px; }
+.modal .dica { color: var(--texto-3); font-size: 12px; margin: 16px 0 0; }
 .modal .secao {
-  margin: 20px 0 0; padding-top: 12px; border-top: 1px solid #e4e4e7;
-  font-size: 13px; font-weight: 600; color: #3f3f46;
+  margin: 20px 0 0; padding-top: 12px; border-top: 1px solid var(--borda-2);
+  font-size: 13px; font-weight: 600; color: var(--texto-2);
 }
 .barra {
   position: absolute; top: 12px; left: 12px; z-index: 5;
-  background: #fff; padding: 8px 12px; border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15); display: flex; gap: 12px; align-items: center;
+  background: var(--fundo); color: var(--texto); padding: 8px 12px; border-radius: 8px;
+  box-shadow: 0 1px 4px var(--sombra); display: flex; gap: 12px; align-items: center;
 }
 
 /* Foco sempre visível: navegar por teclado tem que dar pra ver onde se está. */
-:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
 
 .modos { display: flex; gap: 2px; }
-.modos button {
-  padding: 6px 10px; border: 1px solid #d4d4d8; background: #fff;
-  font: inherit; font-size: 12px; color: #52525b; cursor: pointer;
+.modos button, .barra button.tema {
+  padding: 6px 10px; border: 1px solid var(--borda); background: var(--fundo);
+  font: inherit; font-size: 12px; color: var(--texto-2); cursor: pointer;
 }
+.barra button.tema { border-radius: 8px; white-space: nowrap; }
 .modos button:first-child { border-radius: 8px 0 0 8px; }
 .modos button:last-child { border-radius: 0 8px 8px 0; }
-.modos button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
+.modos button[aria-pressed="true"] {
+  background: var(--acento); border-color: var(--acento); color: var(--acento-texto);
+}
 
 /* Figura armada: o próximo clique no canvas posiciona. */
 .tela.armado .react-flow__pane { cursor: crosshair; }
-.paleta-item[aria-pressed="true"] { border-color: #2563eb; background: #eff6ff; }
+.paleta-item[aria-pressed="true"] { border-color: var(--acento); background: var(--fundo-3); }
 
 /* Handle discreto: some junto com o nó, aparece ao passar o mouse. */
 .react-flow__handle.lado {
-  width: 9px; height: 9px; background: #fff; border: 1.5px solid #a1a1aa; opacity: 0;
-  transition: opacity 120ms;
+  width: 9px; height: 9px; background: var(--fundo); border: 1.5px solid var(--texto-4);
+  opacity: 0; transition: opacity 120ms;
 }
 .react-flow__node:hover .react-flow__handle.lado,
 .react-flow__node.selected .react-flow__handle.lado { opacity: 1; }
@@ -67,10 +116,10 @@ body { margin: 0; }
 .paleta-item {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 4px 6px; border: 1px solid transparent; border-radius: 8px;
-  background: none; font: inherit; font-size: 10px; color: #52525b;
+  background: none; font: inherit; font-size: 10px; color: var(--texto-2);
   cursor: grab; user-select: none;
 }
-.paleta-item:hover { border-color: #d4d4d8; background: #fafafa; }
+.paleta-item:hover { border-color: var(--borda); background: var(--fundo-2); }
 .paleta-item:active { cursor: grabbing; }
 
 .roda-fundo { position: fixed; inset: 0; z-index: 8; }
@@ -78,17 +127,17 @@ body { margin: 0; }
 .roda-item {
   position: absolute; left: 0; top: 0;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
-  width: 64px; padding: 6px 2px; border: 1px solid #d4d4d8; border-radius: 10px;
-  background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  font: inherit; font-size: 10px; color: #52525b; cursor: pointer;
+  width: 64px; padding: 6px 2px; border: 1px solid var(--borda); border-radius: 10px;
+  background: var(--fundo); box-shadow: 0 2px 8px var(--sombra-2);
+  font: inherit; font-size: 10px; color: var(--texto-2); cursor: pointer;
 }
-.roda-item:hover { border-color: #2563eb; color: #2563eb; }
+.roda-item:hover { border-color: var(--acento); color: var(--acento); }
 
 /* Dedo não tem hover nem precisão de 9px: alvos crescem e o que dependia de hover
    passa a ficar sempre visível. 44px é o mínimo recomendado pela WCAG. */
 @media (pointer: coarse) {
   .barra { flex-wrap: wrap; max-width: calc(100vw - 24px); }
-  .modos button { padding: 12px 16px; font-size: 14px; }
+  .modos button, .barra button.tema { padding: 12px 16px; font-size: 14px; }
   .paleta-item { min-width: 64px; padding: 10px 8px; font-size: 12px; }
   .roda-item { width: 84px; padding: 12px 4px; font-size: 12px; }
   .react-flow__handle.lado { width: 16px; height: 16px; opacity: 1; }

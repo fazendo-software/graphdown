@@ -25,6 +25,14 @@ import { PaletaFormas } from "./PaletaFormas.tsx";
 import { RodaFormas } from "./RodaFormas.tsx";
 import { completarLayout } from "./layoutAuto.ts";
 import { tamanhoDe } from "./rough.ts";
+import {
+  PALETA,
+  TemaProvider,
+  gravarPreferencia,
+  lerPreferencia,
+  type Preferencia,
+  type Tema,
+} from "./tema.ts";
 import { Modal } from "./Modal.tsx";
 import { ModalAresta } from "./ModalAresta.tsx";
 
@@ -52,12 +60,14 @@ function tiposDeForma(cat: Categoria): string[] {
   return cat.campos.find((c) => c.chave === cat.forma_por)?.opcoes ?? [];
 }
 
-function estiloDaAresta(cat: Categoria, tipo?: string): Required<EstiloAresta> {
-  return {
+function estiloDaAresta(cat: Categoria, tipo: string | undefined, corPadrao: string) {
+  const declarado = {
     ...ARESTA_PADRAO,
     ...(cat.arestas?.padrao ?? {}),
     ...((tipo ? cat.arestas?.[tipo] : undefined) ?? {}),
-  };
+  } as EstiloAresta & typeof ARESTA_PADRAO;
+  // Cor só vem da categoria se ela declarou uma; senão segue o tema.
+  return { ...declarado, cor: declarado.cor || corPadrao };
 }
 
 function marcadores(ponta: string, cor: string) {
@@ -79,7 +89,11 @@ function rotuloDaAresta(cat: Categoria, a: Aresta): string | undefined {
   return texto || undefined;
 }
 
-function montar(g: GrafoResposta, layout: Layout): { nos: Node[]; arestas: Edge[] } {
+function montar(
+  g: GrafoResposta,
+  layout: Layout,
+  corPadrao: string,
+): { nos: Node[]; arestas: Edge[] } {
   const reais = new Set(g.nos.map((n) => n.id));
   const nos: Node[] = g.nos.map((n) => ({
     id: n.id,
@@ -103,7 +117,7 @@ function montar(g: GrafoResposta, layout: Layout): { nos: Node[]; arestas: Edge[
     });
   }
   const arestas: Edge[] = g.arestas.map((a) => {
-    const estilo = estiloDaAresta(g.categoria, a.tipo);
+    const estilo = estiloDaAresta(g.categoria, a.tipo, corPadrao);
     return {
       id: `${a.de}->${a.para}`,
       source: a.de,
@@ -135,6 +149,13 @@ export function App() {
   // Arrastar da paleta não funciona em touch (HTML5 drag-and-drop não existe lá):
   // tocar na figura arma, o toque seguinte no canvas cria.
   const [armado, setArmado] = useState<string | null>(null);
+  const [preferencia, setPreferencia] = useState<Preferencia>(lerPreferencia);
+  const [temaDoSistema, setTemaDoSistema] = useState<Tema>(() =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "escuro"
+      : "claro",
+  );
+  const tema: Tema = preferencia === "sistema" ? temaDoSistema : preferencia;
   const timerLayout = useRef<number | undefined>(undefined);
   // Guardar a instância evita envolver a árvore num <ReactFlowProvider> só pra usar
   // screenToFlowPosition, que é o que useReactFlow exigiria.
@@ -146,7 +167,7 @@ export function App() {
       const ids = [...g.nos.map((n) => n.id), ...g.fantasmas];
       const forma = new Map(g.nos.map((n) => [n.id, formaDoNo(g.categoria, n.campos)]));
       const layout = completarLayout(ids, g.arestas, g.layout, (id) => forma.get(id) ?? "retangulo");
-      const montado = montar(g, layout);
+      const montado = montar(g, layout, PALETA[tema].aresta);
       setGrafo(g);
       setNos(montado.nos);
       setArestas(montado.arestas);
@@ -157,6 +178,20 @@ export function App() {
     } catch (e) {
       setFalha((e as Error).message);
     }
+  }, [tema]);
+
+  useEffect(() => {
+    // data-tema move as variáveis do CSS; color-scheme faz a barra de rolagem, o cursor
+    // de texto e os controles nativos acompanharem.
+    document.documentElement.dataset.tema = tema;
+    document.documentElement.style.colorScheme = tema === "escuro" ? "dark" : "light";
+  }, [tema]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const trocou = (e: MediaQueryListEvent) => setTemaDoSistema(e.matches ? "escuro" : "claro");
+    mq.addEventListener("change", trocou);
+    return () => mq.removeEventListener("change", trocou);
   }, []);
 
   useEffect(() => {
@@ -319,7 +354,15 @@ export function App() {
 
   const tipos = grafo ? tiposDeForma(grafo.categoria) : [];
 
+  const proximoTema: Record<Preferencia, Preferencia> = {
+    sistema: "claro",
+    claro: "escuro",
+    escuro: "sistema",
+  };
+  const rotuloTema = { sistema: "🖥️ sistema", claro: "☀️ claro", escuro: "🌙 escuro" };
+
   return (
+    <TemaProvider value={tema}>
     <div className={`tela${armado ? " armado" : ""}`}>
       <div className="barra">
         <strong>{grafo?.titulo ?? "carregando…"}</strong>
@@ -351,10 +394,25 @@ export function App() {
             aoArmar={(t) => setArmado((a) => (a === t ? null : t))}
           />
         ) : null}
+        <button
+          type="button"
+          className="tema"
+          title={`tema: ${rotuloTema[preferencia]} — clique para trocar`}
+          aria-label={`tema ${rotuloTema[preferencia]}, clique para trocar`}
+          onClick={() => {
+            const proxima = proximoTema[preferencia];
+            setPreferencia(proxima);
+            gravarPreferencia(proxima);
+          }}
+        >
+          {rotuloTema[preferencia]}
+        </button>
+
         {falha ? <span className="erro">{falha}</span> : null}
       </div>
       <ReactFlow
         aria-label={`grafo de processo: ${grafo?.titulo ?? "carregando"}`}
+        colorMode={tema === "escuro" ? "dark" : "light"}
         nodes={nos}
         edges={arestas}
         nodeTypes={tiposNo}
@@ -449,5 +507,6 @@ export function App() {
         />
       ) : null}
     </div>
+    </TemaProvider>
   );
 }

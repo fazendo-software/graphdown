@@ -1,18 +1,20 @@
 import { memo, useMemo } from "react";
 import { desenharForma } from "./rough.ts";
+import { useCores } from "./tema.ts";
 
 const MINI = { largura: 44, altura: 30 };
 
 /** Miniatura desenhada pelo mesmo código do canvas — paleta e nó nunca divergem. */
 function Miniatura({ forma }: { forma: string }) {
+  const cores = useCores();
   const tracos = useMemo(
     () =>
       desenharForma(
         forma,
-        { seed: 7, roughness: 1.1, bowing: 0.9, stroke: "#3f3f46", strokeWidth: 1.4 },
+        { seed: 7, roughness: 1.1, bowing: 0.9, stroke: cores.traco, strokeWidth: 1.4 },
         MINI,
       ),
-    [forma],
+    [forma, cores.traco],
   );
   return (
     <svg width={MINI.largura} height={MINI.altura} aria-hidden="true">

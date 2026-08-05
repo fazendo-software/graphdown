@@ -1,6 +1,7 @@
 import { memo, useMemo, type CSSProperties } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { desenharForma, seedDoId, tamanhoDe } from "./rough.ts";
+import { useCores } from "./tema.ts";
 
 export type DadosNo = {
   titulo: string;
@@ -34,6 +35,7 @@ function Componente({ id, data, selected }: NodeProps) {
   const { titulo, cor, forma, fantasma, erro } = data as DadosNo;
   const seed = useMemo(() => seedDoId(id), [id]);
   const { largura, altura } = tamanhoDe(forma);
+  const cores = useCores();
 
   // Depende so do que muda a forma. Arrastar move por transform CSS e nao re-desenha.
   const tracos = useMemo(
@@ -44,11 +46,11 @@ function Componente({ id, data, selected }: NodeProps) {
         bowing: 1.2,
         stroke: erro ? "#dc2626" : cor,
         strokeWidth: selected ? 3 : 2,
-        fill: fantasma || erro ? undefined : `${cor}18`,
+        fill: fantasma || erro ? undefined : `${cor}${cores.alfa}`,
         fillStyle: "solid",
         strokeLineDash: fantasma || erro ? [8, 6] : undefined,
       }),
-    [seed, forma, cor, selected, fantasma, erro],
+    [seed, forma, cor, selected, fantasma, erro, cores.alfa],
   );
 
   return (
@@ -68,7 +70,7 @@ function Componente({ id, data, selected }: NodeProps) {
           position: "relative",
           fontSize: 14,
           lineHeight: 1.3,
-          color: erro ? "#dc2626" : "#18181b",
+          color: erro ? "#dc2626" : cores.texto,
           pointerEvents: "none",
           ...(RECUO[forma] ?? RECUO_PADRAO),
         }}

@@ -8,12 +8,13 @@ import {
 } from "@xyflow/react";
 import { caminho, seedDoId } from "./rough.ts";
 import { pontasDaAresta } from "./flutuante.ts";
+import { useCores } from "./tema.ts";
 import type { EstiloAresta } from "../../core/tipos.ts";
 
-export const ARESTA_PADRAO: Required<EstiloAresta> = {
+/** Sem `cor`: quem não declarou cor na categoria segue o tema. */
+export const ARESTA_PADRAO: Omit<Required<EstiloAresta>, "cor"> = {
   estilo: "continua",
   ponta: "cheia",
-  cor: "#52525b",
 };
 
 const TRACEJADO: Record<string, number[] | undefined> = {
@@ -37,7 +38,10 @@ function Componente({
   markerStart,
   data,
 }: EdgeProps) {
-  const { estilo, cor } = { ...ARESTA_PADRAO, ...(data as EstiloAresta | undefined) };
+  const cores = useCores();
+  const declarado = data as EstiloAresta | undefined;
+  const estilo = declarado?.estilo ?? ARESTA_PADRAO.estilo;
+  const cor = declarado?.cor || cores.aresta;
   const origem = useInternalNode(source);
   const destino = useInternalNode(target);
 
@@ -95,12 +99,12 @@ function Componente({
             style={{
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              background: "#fff",
+              background: cores.rotuloFundo,
               padding: "2px 6px",
               borderRadius: 4,
               fontSize: 11,
               lineHeight: 1.35,
-              color: "#52525b",
+              color: cores.rotuloTexto,
               // Com todos os recursos preenchidos o rótulo fica longo; quebra em vez de
               // atravessar o canvas.
               maxWidth: 200,

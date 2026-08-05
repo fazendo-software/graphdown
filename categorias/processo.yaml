@@ -29,6 +29,7 @@ cores:
   concluido: "#16a34a"
 
 arestas:
-  padrao: { estilo: continua, ponta: cheia, cor: "#52525b" }
+  # Sem `cor`: a seta comum segue o tema (escura no claro, clara no escuro).
+  padrao: { estilo: continua, ponta: cheia }
   excecao: { estilo: tracejada, ponta: aberta, cor: "#dc2626" }
   dado: { estilo: pontilhada, ponta: nenhuma, cor: "#2563eb" }
