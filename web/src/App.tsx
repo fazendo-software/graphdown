@@ -4,6 +4,7 @@ import {
   Controls,
   ConnectionMode,
   MarkerType,
+  PanOnScrollMode,
   ReactFlow,
   SelectionMode,
   applyEdgeChanges,
@@ -124,6 +125,16 @@ export function App() {
   const [arestaAberta, setArestaAberta] = useState<{ de: string; para: string } | null>(null);
   const [roda, setRoda] = useState<{ x: number; y: number; alvo: Posicao } | null>(null);
   const [falha, setFalha] = useState<string | null>(null);
+  // Touch não tem botão do meio nem tecla Espaço: nesses aparelhos o padrão é a mão,
+  // senão o dedo desenharia seleção e não haveria como mover a tela.
+  const [modo, setModo] = useState<"selecao" | "mao">(() =>
+    typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches
+      ? "mao"
+      : "selecao",
+  );
+  // Arrastar da paleta não funciona em touch (HTML5 drag-and-drop não existe lá):
+  // tocar na figura arma, o toque seguinte no canvas cria.
+  const [armado, setArmado] = useState<string | null>(null);
   const timerLayout = useRef<number | undefined>(undefined);
   // Guardar a instância evita envolver a árvore num <ReactFlowProvider> só pra usar
   // screenToFlowPosition, que é o que useReactFlow exigiria.
@@ -156,11 +167,21 @@ export function App() {
   }, [carregar]);
 
   useEffect(() => {
-    // Esc fecha o modal — o clique no vazio agora é da roda.
     const tecla = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      setAberto(null);
-      setArestaAberta(null);
+      if (e.key === "Escape") {
+        setAberto(null);
+        setArestaAberta(null);
+        setRoda(null);
+        setArmado(null);
+        return;
+      }
+      // Atalho não pode disparar enquanto o usuário escreve num campo.
+      const alvo = e.target as HTMLElement | null;
+      if (alvo && /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // V e H: mesma convenção de Figma, Illustrator e afins.
+      if (e.key === "v" || e.key === "V") setModo("selecao");
+      if (e.key === "h" || e.key === "H") setModo("mao");
     };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
@@ -275,18 +296,65 @@ export function App() {
     [grafo, nos, carregar],
   );
 
+  useEffect(() => {
+    // Só de teclado não dá para clicar no canvas: com uma figura armada, Enter cria no
+    // centro da tela. Sem isso a paleta seria inalcançável sem mouse.
+    if (!armado) return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || !rf.current) return;
+      const alvo = e.target as HTMLElement | null;
+      if (alvo && /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName)) return;
+      e.preventDefault();
+      const centro = rf.current.screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      });
+      const tipo = armado;
+      setArmado(null);
+      void criar(tipo, centro);
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [armado, criar]);
+
   const tipos = grafo ? tiposDeForma(grafo.categoria) : [];
 
   return (
-    <div className="tela">
+    <div className={`tela${armado ? " armado" : ""}`}>
       <div className="barra">
         <strong>{grafo?.titulo ?? "carregando…"}</strong>
+
+        <div className="modos" role="group" aria-label="ferramenta">
+          <button
+            type="button"
+            aria-pressed={modo === "selecao"}
+            title="selecionar (V) — arraste desenha o retângulo de seleção"
+            onClick={() => setModo("selecao")}
+          >
+            ⬚ selecionar
+          </button>
+          <button
+            type="button"
+            aria-pressed={modo === "mao"}
+            title="mover (H) — arraste move a tela"
+            onClick={() => setModo("mao")}
+          >
+            ✋ mover
+          </button>
+        </div>
+
         {grafo ? (
-          <PaletaFormas tipos={tipos} formaDoTipo={(t) => formaDoTipo(grafo.categoria, t)} />
+          <PaletaFormas
+            tipos={tipos}
+            formaDoTipo={(t) => formaDoTipo(grafo.categoria, t)}
+            armado={armado}
+            aoArmar={(t) => setArmado((a) => (a === t ? null : t))}
+          />
         ) : null}
         {falha ? <span className="erro">{falha}</span> : null}
       </div>
       <ReactFlow
+        aria-label={`grafo de processo: ${grafo?.titulo ?? "carregando"}`}
         nodes={nos}
         edges={arestas}
         nodeTypes={tiposNo}
@@ -299,19 +367,32 @@ export function App() {
         onEdgesChange={aoMudarArestas}
         onDelete={(x) => void aoApagar(x)}
         onConnect={(c) => void aoConectar(c)}
-        // Arraste esquerdo desenha o retângulo de seleção; sobra o botão do meio (e
-        // Espaço+arraste, que o React Flow já dá de graça) para mover o canvas.
-        selectionOnDrag
-        panOnDrag={[1]}
+        // Duas ferramentas, como em qualquer editor de canvas. Espaço+arraste move a tela
+        // em qualquer uma das duas (panActivationKeyCode do React Flow).
+        selectionOnDrag={modo === "selecao"}
+        panOnDrag={modo === "mao" ? [0, 1] : [1]}
         selectionMode={SelectionMode.Partial}
-        // Shift não abre seleção nova: acumula na que já existe.
-        selectionKeyCode={null}
+        // Na mão, Shift+arraste ainda desenha seleção; na seleção, Shift só acumula.
+        selectionKeyCode={modo === "mao" ? "Shift" : null}
         multiSelectionKeyCode="Shift"
         deleteKeyCode={["Delete", "Backspace"]}
+        // Scroll e dois dedos movem a tela; zoom fica em Ctrl+scroll e pinça. É o que
+        // trackpad e touch fazem nativamente — scroll = zoom só funciona bem com roda.
+        panOnScroll
+        panOnScrollMode={PanOnScrollMode.Free}
+        zoomOnScroll={false}
+        zoomOnPinch
         // Fantasma nao tem arquivo: abrir o modal so daria 404.
         onNodeClick={(_, no) => setAberto((no.data as DadosNo).fantasma ? null : no.id)}
         onEdgeClick={(_, a) => setArestaAberta({ de: a.source, para: a.target })}
-        onPaneClick={() => {
+        onPaneClick={(e) => {
+          if (armado && rf.current) {
+            const alvo = rf.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+            const tipo = armado;
+            setArmado(null);
+            void criar(tipo, alvo);
+            return;
+          }
           setAberto(null);
           setArestaAberta(null);
         }}

@@ -26,9 +26,11 @@ function Miniatura({ forma }: { forma: string }) {
 type Props = {
   tipos: string[];
   formaDoTipo: (tipo: string) => string;
+  armado: string | null;
+  aoArmar: (tipo: string) => void;
 };
 
-function Componente({ tipos, formaDoTipo }: Props) {
+function Componente({ tipos, formaDoTipo, armado, aoArmar }: Props) {
   if (tipos.length === 0) return null;
   return (
     <div className="paleta" role="toolbar" aria-label="figuras">
@@ -37,12 +39,16 @@ function Componente({ tipos, formaDoTipo }: Props) {
           key={tipo}
           type="button"
           className="paleta-item"
-          title={`arraste para o canvas: ${tipo}`}
+          // Duas formas de usar, porque arrastar não existe em touch: arraste solta onde
+          // quiser; clique arma e o próximo clique no canvas posiciona.
+          aria-pressed={armado === tipo}
+          title={`${tipo}: arraste para o canvas, ou clique e depois clique onde quiser`}
           draggable
           onDragStart={(e) => {
             e.dataTransfer.setData("application/grapydown-tipo", tipo);
             e.dataTransfer.effectAllowed = "copy";
           }}
+          onClick={() => aoArmar(tipo)}
         >
           <Miniatura forma={formaDoTipo(tipo)} />
           <span>{tipo}</span>
