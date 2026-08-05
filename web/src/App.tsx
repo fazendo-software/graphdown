@@ -4,6 +4,7 @@ import {
   Controls,
   MarkerType,
   ReactFlow,
+  SelectionMode,
   applyEdgeChanges,
   applyNodeChanges,
   type Connection,
@@ -190,12 +191,30 @@ export function App() {
     setArestas((atuais) => applyEdgeChanges(mudancas, atuais));
   }, []);
 
-  // Desligar = tirar a origem do depende_de do destino. Nao ha rota de aresta.
-  const aoDesconectar = useCallback(
-    async (removidas: Edge[]) => {
+  // Um handler só para nó e aresta: apagar um nó também apaga as arestas dele, e os dois
+  // callbacks separados disputariam o mesmo arquivo — o PATCH de depende_de de um nó que
+  // acabou de ir pra lixeira.
+  const aoApagar = useCallback(
+    async ({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) => {
       if (!grafo) return;
+      // Fantasma não tem arquivo pra apagar.
+      const ids = nodes.filter((n) => !(n.data as DadosNo).fantasma).map((n) => n.id);
+      const apagados = new Set(ids);
+
+      if (ids.length > 0) {
+        const quais = ids.length === 1 ? `"${ids[0]}"` : `${ids.length} passos`;
+        if (!window.confirm(`Mover ${quais} para a lixeira?`)) {
+          await carregar();
+          return;
+        }
+      }
+
       try {
-        for (const { source, target } of removidas) {
+        for (const id of ids) await api.apagarNo(id);
+        // Desligar = tirar a origem do depende_de do destino. Não há rota de aresta.
+        // Aresta de nó apagado não precisa de PATCH: o arquivo inteiro já saiu.
+        for (const { source, target } of edges) {
+          if (apagados.has(target)) continue;
           const alvo = grafo.nos.find((n) => n.id === target);
           if (!alvo) continue;
           const restante = comoLista(alvo.campos.depende_de).filter(
@@ -206,6 +225,7 @@ export function App() {
         await carregar();
       } catch (e) {
         setFalha((e as Error).message);
+        await carregar();
       }
     },
     [grafo, carregar],
@@ -256,14 +276,26 @@ export function App() {
         onInit={(inst) => (rf.current = inst)}
         onNodesChange={aoMudarNos}
         onEdgesChange={aoMudarArestas}
-        onEdgesDelete={(e) => void aoDesconectar(e)}
+        onDelete={(x) => void aoApagar(x)}
         onConnect={(c) => void aoConectar(c)}
+        // Arraste esquerdo desenha o retângulo de seleção; sobra o botão do meio (e
+        // Espaço+arraste, que o React Flow já dá de graça) para mover o canvas.
+        selectionOnDrag
+        panOnDrag={[1]}
+        selectionMode={SelectionMode.Partial}
+        // Shift não abre seleção nova: acumula na que já existe.
+        selectionKeyCode={null}
+        multiSelectionKeyCode="Shift"
+        deleteKeyCode={["Delete", "Backspace"]}
         // Fantasma nao tem arquivo: abrir o modal so daria 404.
         onNodeClick={(_, no) => setAberto((no.data as DadosNo).fantasma ? null : no.id)}
-        onPaneClick={(e) => {
+        onPaneClick={() => setAberto(null)}
+        onPaneContextMenu={(e) => {
+          e.preventDefault();
           if (tipos.length === 0 || !rf.current) return;
-          const alvo = rf.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-          setRoda({ x: e.clientX, y: e.clientY, alvo });
+          const { clientX, clientY } = e as React.MouseEvent;
+          const alvo = rf.current.screenToFlowPosition({ x: clientX, y: clientY });
+          setRoda({ x: clientX, y: clientY, alvo });
         }}
         onDragOver={(e) => {
           e.preventDefault();
