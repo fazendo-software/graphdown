@@ -3,8 +3,15 @@ campos:
   # `tipo` vem primeiro de proposito: templateNo preenche enum com opcoes[0].
   - { chave: tipo, tipo: enum, opcoes: [passo, decisao, inicio, fim, ator] }
   - { chave: responsavel, tipo: texto, obrigatorio: true }
-  - { chave: prazo, tipo: texto }
   - { chave: status, tipo: enum, opcoes: [rascunho, ativo, bloqueado, concluido] }
+
+# Recurso e da transicao, nao do passo: prazo e "quanto custa ir de A ate B".
+campos_aresta:
+  - { chave: prazo, tipo: texto } # 2d, 8h
+  - { chave: pessoas, tipo: texto } # 2 analistas
+  - { chave: custo, tipo: texto } # R$ 1.200
+  - { chave: esforco, tipo: texto } # 16h-homem
+  - { chave: material, tipo: texto } # notebook, licenca
 
 forma_por: tipo
 formas:

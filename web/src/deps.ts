@@ -1,15 +1,27 @@
 import { comoLista, normalizarAresta } from "../../core/grafo.ts";
 import { api } from "./api.ts";
 
-export type Dependencia = { de: string; quando?: string; tipo?: string };
+export type Dependencia = {
+  de: string;
+  quando?: string;
+  tipo?: string;
+  /** Recursos da transição: prazo, pessoas, custo… o que a categoria declarar. */
+  campos: Record<string, unknown>;
+};
 
-/** Volta ao formato do arquivo: string quando não há mais nada, objeto quando há. */
+function vazio(valor: unknown): boolean {
+  return valor === undefined || valor === null || String(valor).trim() === "";
+}
+
+/** Volta ao formato do arquivo: string quando não sobrou nada, objeto quando sobrou. */
 export function paraFrontmatter(d: Dependencia): unknown {
-  if (!d.quando && !d.tipo) return d.de;
+  const campos = Object.fromEntries(Object.entries(d.campos).filter(([, v]) => !vazio(v)));
+  if (!d.quando && !d.tipo && Object.keys(campos).length === 0) return d.de;
   return {
     de: d.de,
     ...(d.quando ? { quando: d.quando } : {}),
     ...(d.tipo ? { tipo: d.tipo } : {}),
+    ...campos,
   };
 }
 

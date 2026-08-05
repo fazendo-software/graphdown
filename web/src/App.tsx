@@ -14,7 +14,7 @@ import {
   type NodeChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import type { Categoria, EstiloAresta, Layout, Posicao } from "../../core/tipos.ts";
+import type { Aresta, Categoria, EstiloAresta, Layout, Posicao } from "../../core/tipos.ts";
 import { comoLista, normalizarAresta } from "../../core/grafo.ts";
 import { api, type GrafoResposta } from "./api.ts";
 import { NoProcesso, type DadosNo } from "./NoProcesso.tsx";
@@ -67,6 +67,16 @@ function marcadores(ponta: string, cor: string) {
   return { markerEnd: cheia };
 }
 
+/** Rótulo da seta: o `quando` mais os recursos preenchidos, na ordem da categoria. */
+function rotuloDaAresta(cat: Categoria, a: Aresta): string | undefined {
+  const recursos = (cat.campos_aresta ?? [])
+    .map((c) => a.campos[c.chave])
+    .filter((v) => v !== undefined && v !== null && String(v).trim() !== "")
+    .map(String);
+  const texto = [a.quando, ...recursos].filter(Boolean).join(" · ");
+  return texto || undefined;
+}
+
 function montar(g: GrafoResposta, layout: Layout): { nos: Node[]; arestas: Edge[] } {
   const reais = new Set(g.nos.map((n) => n.id));
   const nos: Node[] = g.nos.map((n) => ({
@@ -97,7 +107,7 @@ function montar(g: GrafoResposta, layout: Layout): { nos: Node[]; arestas: Edge[
       source: a.de,
       target: a.para,
       type: "rough",
-      label: a.quando,
+      label: rotuloDaAresta(g.categoria, a),
       data: estilo,
       ...marcadores(estilo.ponta, estilo.cor),
     };

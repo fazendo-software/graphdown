@@ -1,17 +1,27 @@
 import { parseNota } from "./parse.ts";
 import type { Aresta, Grafo, No } from "./tipos.ts";
 
-export function normalizarAresta(
-  entrada: unknown,
-): { de: string; quando?: string; tipo?: string } | null {
-  if (typeof entrada === "string") return { de: entrada, quando: undefined, tipo: undefined };
+export type ArestaCrua = {
+  de: string;
+  quando?: string;
+  tipo?: string;
+  campos: Record<string, unknown>;
+};
+
+export function normalizarAresta(entrada: unknown): ArestaCrua | null {
+  if (typeof entrada === "string") {
+    return { de: entrada, quando: undefined, tipo: undefined, campos: {} };
+  }
   if (entrada !== null && typeof entrada === "object") {
-    const o = entrada as { de?: unknown; quando?: unknown; tipo?: unknown };
-    if (typeof o.de === "string") {
+    // `de`, `quando` e `tipo` sao estruturais; o resto e recurso da transicao e passa
+    // adiante sem o core saber o nome — quem declara isso e a categoria.
+    const { de, quando, tipo, ...resto } = entrada as Record<string, unknown>;
+    if (typeof de === "string") {
       return {
-        de: o.de,
-        quando: typeof o.quando === "string" ? o.quando : undefined,
-        tipo: typeof o.tipo === "string" ? o.tipo : undefined,
+        de,
+        quando: typeof quando === "string" ? quando : undefined,
+        tipo: typeof tipo === "string" ? tipo : undefined,
+        campos: resto,
       };
     }
   }
@@ -44,7 +54,7 @@ export function construirGrafo(arquivos: { id: string; texto: string }[]): Grafo
       const a = normalizarAresta(bruta);
       if (!a) continue;
       if (!existentes.has(a.de)) fantasmas.add(a.de);
-      arestas.push({ de: a.de, para: id, quando: a.quando, tipo: a.tipo });
+      arestas.push({ de: a.de, para: id, quando: a.quando, tipo: a.tipo, campos: a.campos });
     }
   }
 

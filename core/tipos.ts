@@ -1,4 +1,11 @@
-export type Aresta = { de: string; para: string; quando?: string; tipo?: string };
+export type Aresta = {
+  de: string;
+  para: string;
+  quando?: string;
+  tipo?: string;
+  /** Recursos da transição (prazo, pessoas, custo…), declarados em `campos_aresta`. */
+  campos: Record<string, unknown>;
+};
 
 export type EstiloAresta = {
   estilo?: "continua" | "tracejada" | "pontilhada";
@@ -34,6 +41,8 @@ export type Categoria = {
   forma_por?: string;
   formas?: Record<string, string>;
   arestas?: Record<string, EstiloAresta>;
+  /** Campos de recurso que cada aresta pode ter. Mesmo formato de `campos`. */
+  campos_aresta?: CampoCategoria[];
 };
 
 export type Posicao = { x: number; y: number };

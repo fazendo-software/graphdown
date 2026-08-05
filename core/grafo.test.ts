@@ -5,7 +5,12 @@ import { comoLista, construirGrafo, normalizarAresta } from "./grafo.ts";
 const no = (id: string, fm: string) => ({ id, texto: `---\n${fm}\n---\ncorpo\n` });
 
 test("normalizarAresta aceita string", () => {
-  assert.deepEqual(normalizarAresta("a"), { de: "a", quando: undefined, tipo: undefined });
+  assert.deepEqual(normalizarAresta("a"), {
+    de: "a",
+    quando: undefined,
+    tipo: undefined,
+    campos: {},
+  });
 });
 
 test("normalizarAresta aceita objeto com rótulo", () => {
@@ -13,6 +18,7 @@ test("normalizarAresta aceita objeto com rótulo", () => {
     de: "a",
     quando: "rejeitado",
     tipo: undefined,
+    campos: {},
   });
 });
 
@@ -21,6 +27,15 @@ test("normalizarAresta preserva o tipo", () => {
     de: "a",
     quando: undefined,
     tipo: "excecao",
+    campos: {},
+  });
+});
+
+test("normalizarAresta carrega os recursos sem saber o nome deles", () => {
+  // O core nao conhece "prazo" nem "custo": quem declara isso e a categoria.
+  assert.deepEqual(normalizarAresta({ de: "a", prazo: "2d", custo: "R$ 100" })?.campos, {
+    prazo: "2d",
+    custo: "R$ 100",
   });
 });
 
@@ -44,7 +59,9 @@ test("comoLista trata escalar como lista de um item", () => {
 
 test("depende_de escalar vira aresta", () => {
   const g = construirGrafo([no("a", "titulo: A"), no("b", "titulo: B\ndepende_de: a")]);
-  assert.deepEqual(g.arestas, [{ de: "a", para: "b", quando: undefined, tipo: undefined }]);
+  assert.deepEqual(g.arestas, [
+    { de: "a", para: "b", quando: undefined, tipo: undefined, campos: {} },
+  ]);
 });
 
 test("construirGrafo liga destino a origem", () => {
@@ -53,7 +70,9 @@ test("construirGrafo liga destino a origem", () => {
     no("b", "titulo: B\ndepende_de:\n  - a"),
   ]);
   assert.equal(g.nos.length, 2);
-  assert.deepEqual(g.arestas, [{ de: "a", para: "b", quando: undefined, tipo: undefined }]);
+  assert.deepEqual(g.arestas, [
+    { de: "a", para: "b", quando: undefined, tipo: undefined, campos: {} },
+  ]);
   assert.deepEqual(g.fantasmas, []);
 });
 

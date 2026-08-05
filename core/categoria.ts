@@ -11,6 +11,9 @@ export function parseCategoria(texto: string): Categoria {
     forma_por: cru.forma_por,
     formas: cru.formas,
     arestas: cru.arestas,
+    campos_aresta: Array.isArray(cru.campos_aresta)
+      ? (cru.campos_aresta as CampoCategoria[])
+      : undefined,
   };
 }
 

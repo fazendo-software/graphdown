@@ -19,9 +19,11 @@ export function ModalAresta({ de, para, categoria, aoFechar, aoMudar }: Props) {
   const [lista, setLista] = useState<Dependencia[] | null>(null);
   const [quando, setQuando] = useState("");
   const [tipo, setTipo] = useState("padrao");
+  const [campos, setCampos] = useState<Record<string, string>>({});
   const [falha, setFalha] = useState<string | null>(null);
 
   const tipos = Object.keys(categoria.arestas ?? {});
+  const recursos = categoria.campos_aresta ?? [];
 
   useEffect(() => {
     setLista(null);
@@ -33,6 +35,11 @@ export function ModalAresta({ de, para, categoria, aoFechar, aoMudar }: Props) {
         setLista(deps);
         setQuando(atual?.quando ?? "");
         setTipo(atual?.tipo ?? "padrao");
+        setCampos(
+          Object.fromEntries(
+            Object.entries(atual?.campos ?? {}).map(([k, v]) => [k, v == null ? "" : String(v)]),
+          ),
+        );
       })
       .catch((e: Error) => setFalha(e.message));
   }, [de, para]);
@@ -44,7 +51,12 @@ export function ModalAresta({ de, para, categoria, aoFechar, aoMudar }: Props) {
         para,
         lista.map((d) =>
           d.de === de
-            ? { de, quando: quando.trim() || undefined, tipo: tipo === "padrao" ? undefined : tipo }
+            ? {
+                de,
+                quando: quando.trim() || undefined,
+                tipo: tipo === "padrao" ? undefined : tipo,
+                campos,
+              }
             : d,
         ),
       );
@@ -81,7 +93,7 @@ export function ModalAresta({ de, para, categoria, aoFechar, aoMudar }: Props) {
           <p>{falha ? "não foi possível abrir esta seta." : "carregando…"}</p>
         ) : (
           <>
-            <label htmlFor="aresta-quando">rótulo (aparece no meio da seta)</label>
+            <label htmlFor="aresta-quando">rótulo</label>
             <input
               id="aresta-quando"
               value={quando}
@@ -102,8 +114,44 @@ export function ModalAresta({ de, para, categoria, aoFechar, aoMudar }: Props) {
               </>
             ) : null}
 
+            {recursos.length > 0 ? (
+              <>
+                <p className="secao">recursos até chegar ao destino</p>
+                {recursos.map((campo) => {
+                  const valor = campos[campo.chave] ?? "";
+                  const trocar = (v: string) => setCampos((c) => ({ ...c, [campo.chave]: v }));
+                  return (
+                    <div key={campo.chave}>
+                      <label htmlFor={`aresta-${campo.chave}`}>{campo.chave}</label>
+                      {campo.tipo === "enum" ? (
+                        <select
+                          id={`aresta-${campo.chave}`}
+                          value={valor}
+                          onChange={(e) => trocar(e.target.value)}
+                        >
+                          <option value="">—</option>
+                          {(campo.opcoes ?? []).map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          id={`aresta-${campo.chave}`}
+                          value={valor}
+                          onChange={(e) => trocar(e.target.value)}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            ) : null}
+
             <p className="dica">
-              A seta mora em <code>depende_de</code> no arquivo <code>{para}.md</code>.
+              A seta mora em <code>depende_de</code> no arquivo <code>{para}.md</code>. Campo
+              vazio não é gravado.
             </p>
           </>
         )}
