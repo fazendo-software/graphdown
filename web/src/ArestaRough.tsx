@@ -1,6 +1,13 @@
 import { memo, useMemo } from "react";
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react";
+import {
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
+  useInternalNode,
+  type EdgeProps,
+} from "@xyflow/react";
 import { caminho, seedDoId } from "./rough.ts";
+import { pontasDaAresta } from "./flutuante.ts";
 import type { EstiloAresta } from "../../core/tipos.ts";
 
 export const ARESTA_PADRAO: Required<EstiloAresta> = {
@@ -17,6 +24,8 @@ const TRACEJADO: Record<string, number[] | undefined> = {
 
 function Componente({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -29,14 +38,30 @@ function Componente({
   data,
 }: EdgeProps) {
   const { estilo, cor } = { ...ARESTA_PADRAO, ...(data as EstiloAresta | undefined) };
+  const origem = useInternalNode(source);
+  const destino = useInternalNode(target);
+
+  // Antes da primeira medição os nós não têm tamanho; aí valem as pontas fixas que o
+  // React Flow calculou pelos handles.
+  const pontas =
+    origem?.measured.width && destino?.measured.width
+      ? pontasDaAresta(origem, destino)
+      : {
+          sx: sourceX,
+          sy: sourceY,
+          tx: targetX,
+          ty: targetY,
+          ladoOrigem: sourcePosition,
+          ladoDestino: targetPosition,
+        };
 
   const [d, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
+    sourceX: pontas.sx,
+    sourceY: pontas.sy,
+    targetX: pontas.tx,
+    targetY: pontas.ty,
+    sourcePosition: pontas.ladoOrigem,
+    targetPosition: pontas.ladoDestino,
   });
 
   const tracos = useMemo(

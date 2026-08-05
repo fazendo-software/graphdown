@@ -28,6 +28,8 @@ const RECUO: Record<string, CSSProperties> = {
 };
 const RECUO_PADRAO: CSSProperties = { padding: "12px 14px" };
 
+const LADOS = [Position.Top, Position.Right, Position.Bottom, Position.Left];
+
 function Componente({ id, data, selected }: NodeProps) {
   const { titulo, cor, forma, fantasma, erro } = data as DadosNo;
   const seed = useMemo(() => seedDoId(id), [id]);
@@ -51,7 +53,11 @@ function Componente({ id, data, selected }: NodeProps) {
 
   return (
     <div style={{ width: largura, height: altura, position: "relative" }}>
-      <Handle type="target" position={Position.Top} />
+      {/* Um handle por lado. Com connectionMode Loose o React Flow deixa puxar e soltar
+          em qualquer um deles, e a aresta flutuante escolhe sozinha por onde sair. */}
+      {LADOS.map((lado) => (
+        <Handle key={lado} id={lado} type="source" position={lado} className="lado" />
+      ))}
       <svg width={largura} height={altura} style={{ position: "absolute", inset: 0 }}>
         {tracos.map((t, i) => (
           <path key={i} d={t.d} stroke={t.stroke} fill={t.fill} strokeWidth={t.strokeWidth} />
@@ -73,7 +79,6 @@ function Componente({ id, data, selected }: NodeProps) {
           {fantasma ? <div style={{ fontSize: 11, marginTop: 4 }}>arquivo não existe</div> : null}
         </span>
       </div>
-      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }

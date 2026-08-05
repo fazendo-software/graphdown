@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Background,
   Controls,
+  ConnectionMode,
   MarkerType,
   ReactFlow,
   SelectionMode,
@@ -194,6 +195,9 @@ export function App() {
       try {
         await api.patchNo(target, { depende_de: [...atual, source] });
         await carregar();
+        // Abre o modal na hora: os recursos da transição (prazo, pessoas, custo) são o
+        // motivo da seta existir, e ninguém adivinha que precisa clicar nela depois.
+        setArestaAberta({ de: source, para: target });
       } catch (e) {
         setFalha((e as Error).message);
       }
@@ -288,6 +292,9 @@ export function App() {
         nodeTypes={tiposNo}
         edgeTypes={tiposAresta}
         onInit={(inst) => (rf.current = inst)}
+        // Loose: os 4 handles do nó são todos "source", e a ligação pode começar ou
+        // terminar em qualquer um. Quem decide o lado é a geometria, não o handle.
+        connectionMode={ConnectionMode.Loose}
         onNodesChange={aoMudarNos}
         onEdgesChange={aoMudarArestas}
         onDelete={(x) => void aoApagar(x)}
