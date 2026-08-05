@@ -26,7 +26,7 @@ test("GET /api/grafo devolve nós, arestas e layout", async () => {
   assert.equal(g.titulo, "Onboarding");
   assert.equal(g.categoria.nome, "Processo");
   assert.equal(g.nos.length, 2);
-  assert.deepEqual(g.arestas, [{ de: "01-a", para: "02-b" }]);
+  assert.deepEqual(g.arestas, [{ de: "01-a", para: "02-b", campos: {} }]);
   assert.deepEqual(g.layout, {});
   await fechar();
 });

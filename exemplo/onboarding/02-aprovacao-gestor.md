@@ -2,10 +2,12 @@
 titulo: Aprovação do gestor
 tipo: passo
 responsavel: gestor-direto
-prazo: 2d
 status: ativo
 depende_de:
-  - 01-solicitacao
+  - de: 01-solicitacao
+    prazo: 2d
+    pessoas: gestor direto
+    esforco: 30min
 ---
 Gestor recebe email. SLA 2 dias úteis.
 

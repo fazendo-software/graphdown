@@ -74,7 +74,12 @@ function Componente({
               padding: "2px 6px",
               borderRadius: 4,
               fontSize: 11,
+              lineHeight: 1.35,
               color: "#52525b",
+              // Com todos os recursos preenchidos o rótulo fica longo; quebra em vez de
+              // atravessar o canvas.
+              maxWidth: 200,
+              textAlign: "center",
             }}
           >
             {label}

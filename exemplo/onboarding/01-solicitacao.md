@@ -2,9 +2,10 @@
 titulo: Solicitação de acesso
 tipo: passo
 responsavel: rh
-prazo: 1d
 status: ativo
 depende_de:
-  - 00-inicio
+  - de: 00-inicio
+    prazo: 1d
+    pessoas: 1 analista de RH
 ---
 RH abre o chamado com nome, cargo e data de início.
