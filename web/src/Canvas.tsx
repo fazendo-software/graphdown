@@ -23,7 +23,7 @@ import { aplicarDiffRender, type RenderState } from "./diffGrafo.ts";
 import { NoProcesso, type DadosNo } from "./NoProcesso.tsx";
 import { NotaNo, type DadosNota } from "./NotaNo.tsx";
 import { ArestaRough } from "./ArestaRough.tsx";
-import { RodaFormas } from "./RodaFormas.tsx";
+import { RodaFormas, type CategoriaRoda } from "./RodaFormas.tsx";
 import { BarraLateral, type Armado, type ItemGrafo } from "./BarraLateral.tsx";
 import { MenuProjeto } from "./MenuProjeto.tsx";
 import { completarLayout } from "./layoutAuto.ts";
@@ -31,6 +31,7 @@ import { tamanhoDe } from "./rough.ts";
 import { PALETA, TemaProvider, gravarPreferencia, lerPreferencia, type Preferencia, type Tema } from "./tema.ts";
 import { Modal } from "./Modal.tsx";
 import { ModalAresta } from "./ModalAresta.tsx";
+import { DialogoConfirmacao, DialogoTexto } from "./Dialogos.tsx";
 import {
   categoriaDoNo,
   edgeDeAresta,
@@ -61,6 +62,13 @@ type Props = {
   aoSairDaConta: () => void;
 };
 
+type ItemCopiado =
+  | { kind: "no"; id: string; titulo: string; categoriaId: string; campos: Record<string, unknown>; x: number; y: number }
+  | { kind: "nota"; id: string; conteudo: string; x: number; y: number };
+
+type ArestaCopiada = { de: string; para: string; tipo?: string; quando?: string; campos: Record<string, unknown> };
+type AreaTransferencia = { itens: ItemCopiado[]; arestas: ArestaCopiada[] };
+
 export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, aoSairDaConta }: Props) {
   const api = useMemo(() => apiProjeto(projetoId), [projetoId]);
   const somenteLeitura = papel === "leitor";
@@ -71,8 +79,15 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   const [presenca, setPresenca] = useState<{ id: string; nome: string; editando: string | null }[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
   const [arestaAberta, setArestaAberta] = useState<ArestaComId | null>(null);
-  const [roda, setRoda] = useState<{ x: number; y: number; alvo: Posicao } | null>(null);
+  const [roda, setRoda] = useState<{ x: number; y: number; alvo: Posicao; gesto: "segurar" | "clique" } | null>(
+    null,
+  );
   const [falha, setFalha] = useState<string | null>(null);
+  const [dialogo, setDialogo] = useState<
+    | { tipo: "confirmacao"; mensagem: string; resolver: (ok: boolean) => void }
+    | { tipo: "texto"; mensagem: string; resolver: (valor: string | null) => void }
+    | null
+  >(null);
   // Touch não tem botão do meio nem tecla Espaço: nesses aparelhos o padrão é a mão,
   // senão o dedo desenharia seleção e não haveria como mover a tela.
   const [modo, setModo] = useState<"selecao" | "mao">(() =>
@@ -101,6 +116,32 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   // snapshot é montado — upsert/remove por id é idempotente, então reaplicar não duplica.
   const carregando = useRef(false);
   const filaMensagens = useRef<MsgServidor[]>([]);
+  // Segurar o botão esquerdo no vazio abre a roda (gesto do ping do LoL). O clique curto
+  // continua fazendo o que sempre fez — limpar a seleção —, e arrastar continua sendo pan
+  // ou seleção: por isso o gesto exige tempo E imobilidade.
+  const pressionado = useRef<{ x: number; y: number; timer: number } | null>(null);
+  // A área de transferência é interna e propositalmente não usa `navigator.clipboard`:
+  // ela carrega a estrutura do grafo (inclusive as relações), não um texto serializado.
+  // Portanto não sobrevive a recarga nem pode ser colada em outro aplicativo.
+  const areaTransferencia = useRef<AreaTransferencia | null>(null);
+  const copiarRef = useRef<() => void>(() => undefined);
+  const colarRef = useRef<() => void>(() => undefined);
+  const cortarRef = useRef<() => void>(() => undefined);
+
+  function pedirConfirmacao(mensagem: string): Promise<boolean> {
+    return new Promise((resolver) => setDialogo({ tipo: "confirmacao", mensagem, resolver }));
+  }
+
+  function pedirTexto(mensagem: string): Promise<string | null> {
+    return new Promise((resolver) => setDialogo({ tipo: "texto", mensagem, resolver }));
+  }
+
+  function fecharDialogo() {
+    if (!dialogo) return;
+    if (dialogo.tipo === "confirmacao") dialogo.resolver(false);
+    else dialogo.resolver(null);
+    setDialogo(null);
+  }
 
   // Estável entre renders: vai parar dentro do `data` de cada nota, e recriar a função a
   // cada render remontaria todas elas.
@@ -174,7 +215,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
           return p;
         },
         construtores: {
-          noReal: (no, posicao) => nodeDeReal(no, catalogo, posicao),
+          noReal: (no, posicao) => nodeDeReal(no, catalogo, posicao, somenteLeitura),
           noFantasma: nodeDeFantasma,
           aresta: (a) => edgeDeAresta(a, catalogo, corPadrao),
           nota: construirNota,
@@ -226,7 +267,30 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
       }
       const alvo = e.target as HTMLElement | null;
       if (alvo && /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName)) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (alvo?.closest(".modal")) return;
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key.toLowerCase() === "a") {
+          // Seleção do canvas, não seleção de texto da página: Ctrl/Cmd+A marca
+          // apenas nós e notas, mantendo as arestas fora da seleção.
+          e.preventDefault();
+          setRender((prev) => ({
+            ...prev,
+            nos: prev.nos.map((n) => ({ ...n, selected: true })),
+            arestas: prev.arestas.map((a) => ({ ...a, selected: false })),
+          }));
+        } else if (e.key.toLowerCase() === "c") {
+          e.preventDefault();
+          copiarRef.current();
+        } else if (e.key.toLowerCase() === "x") {
+          e.preventDefault();
+          cortarRef.current();
+        } else if (e.key.toLowerCase() === "v") {
+          e.preventDefault();
+          colarRef.current();
+        }
+        return;
+      }
+      if (e.altKey) return;
       // V e H: mesma convenção de Figma, Illustrator e afins.
       if (e.key === "v" || e.key === "V") setModo("selecao");
       if (e.key === "h" || e.key === "H") setModo("mao");
@@ -236,6 +300,48 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   }, []);
 
   const ehNota = (id: string) => render.nos.find((n) => n.id === id)?.type === "nota";
+
+  const MS_SEGURAR = 220;
+  const TOLERANCIA_PX = 6;
+
+  function cancelarPressao() {
+    if (!pressionado.current) return;
+    clearTimeout(pressionado.current.timer);
+    pressionado.current = null;
+  }
+
+  function abrirRoda(clientX: number, clientY: number, gesto: "segurar" | "clique") {
+    if (somenteLeitura || !rf.current || categoriasDaRoda.length === 0) return;
+    setRoda({
+      x: clientX,
+      y: clientY,
+      alvo: rf.current.screenToFlowPosition({ x: clientX, y: clientY }),
+      gesto,
+    });
+  }
+
+  function aoPressionar(e: React.PointerEvent) {
+    // Só o vazio: pressionar um nó é arrastar o nó, não abrir a roda.
+    if (e.button !== 0 || armado || somenteLeitura) return;
+    if (!(e.target as HTMLElement).classList.contains("react-flow__pane")) return;
+    const { clientX, clientY } = e;
+    cancelarPressao();
+    pressionado.current = {
+      x: clientX,
+      y: clientY,
+      timer: window.setTimeout(() => {
+        pressionado.current = null;
+        abrirRoda(clientX, clientY, "segurar");
+      }, MS_SEGURAR),
+    };
+  }
+
+  function aoMoverPonteiro(e: React.PointerEvent) {
+    const p = pressionado.current;
+    if (!p) return;
+    // Saiu do lugar: era pan ou retângulo de seleção, não intenção de abrir a roda.
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > TOLERANCIA_PX) cancelarPressao();
+  }
 
   function aoMudarNos(mudancas: NodeChange[]) {
     setRender((prev) => ({ ...prev, nos: applyNodeChanges(mudancas, prev.nos) }));
@@ -280,7 +386,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
         ids.length === 1 ? `"${ids[0]}"` : ids.length > 1 ? `${ids.length} passos` : "",
         notas.length === 1 ? "1 nota" : notas.length > 1 ? `${notas.length} notas` : "",
       ].filter(Boolean);
-      if (!window.confirm(`Apagar ${partes.join(" e ")}?`)) {
+      if (!(await pedirConfirmacao(`Apagar ${partes.join(" e ")}?`))) {
         await carregar();
         return;
       }
@@ -301,6 +407,97 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     }
   }
 
+  async function copiarSelecionados(
+    nodes = render.nos.filter((n) => n.selected),
+    edges = render.arestas.filter((e) => e.selected),
+  ) {
+    try {
+      const itens: ItemCopiado[] = [];
+      for (const node of nodes) {
+        if (node.type === "nota") {
+          itens.push({
+            kind: "nota",
+            id: node.id,
+            conteudo: (node.data as DadosNota).conteudo,
+            x: node.position.x,
+            y: node.position.y,
+          });
+        } else if (!(node.data as DadosNo).fantasma) {
+          const detalhe = await api.no(node.id);
+          itens.push({
+            kind: "no",
+            id: node.id,
+            titulo: detalhe.titulo,
+            categoriaId: detalhe.categoria_id,
+            campos: detalhe.campos,
+            x: node.position.x,
+            y: node.position.y,
+          });
+        }
+      }
+      const ids = new Set(itens.map((item) => item.id));
+      areaTransferencia.current = {
+        itens,
+        arestas: edges
+          .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
+          .map((edge) => {
+            const a = (edge.data as DadosAresta).aresta;
+            return { de: edge.source, para: edge.target, tipo: a.tipo, quando: a.quando, campos: a.campos };
+          }),
+      };
+    } catch (e) {
+      setFalha((e as Error).message);
+      throw e;
+    }
+  }
+
+  async function colarSelecionados() {
+    if (somenteLeitura || !areaTransferencia.current || areaTransferencia.current.itens.length === 0) return;
+    const copia = areaTransferencia.current;
+    const minX = Math.min(...copia.itens.map((item) => item.x));
+    const minY = Math.min(...copia.itens.map((item) => item.y));
+    const deslocamento = 40;
+    const novos = new Map<string, string>();
+    try {
+      for (const item of copia.itens) {
+        const x = Math.round(item.x - minX + deslocamento);
+        const y = Math.round(item.y - minY + deslocamento);
+        if (item.kind === "nota") {
+          const nota = await api.criarNota(item.conteudo, x, y);
+          novos.set(item.id, nota.id);
+        } else {
+          const no = await api.criarNo(item.titulo, item.categoriaId, item.campos);
+          novos.set(item.id, no.id);
+          wsRef.current?.enviar({ t: "soltou", no: no.id, x, y });
+        }
+      }
+      for (const aresta of copia.arestas) {
+        const de = novos.get(aresta.de);
+        const para = novos.get(aresta.para);
+        if (!de || !para) continue;
+        const nova = await api.criarAresta(de, para, aresta.tipo ?? null);
+        if (aresta.quando || Object.keys(aresta.campos).length > 0) {
+          await api.patchAresta(nova.id, { quando: aresta.quando ?? null, campos: aresta.campos });
+        }
+      }
+    } catch (e) {
+      setFalha((e as Error).message);
+      await carregar();
+    }
+  }
+
+  function iniciarCorte() {
+    const nodes = render.nos.filter((n) => n.selected);
+    const edges = render.arestas.filter((e) => e.selected);
+    void copiarSelecionados(nodes, edges)
+      .then(() => aoApagar({ nodes, edges }))
+      .catch(() => undefined);
+  }
+
+  copiarRef.current = () => void copiarSelecionados();
+  colarRef.current = () => void colarSelecionados();
+  cortarRef.current = iniciarCorte;
+
   async function criar(alvoArmado: Armado, alvo: Posicao) {
     if (!catalogo) return;
     if (alvoArmado.tipo === TIPO_NOTA) {
@@ -317,9 +514,9 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     // categoria que saiu do projeto entre o clique e agora.
     const cat = alvoArmado.categoriaId ? catalogo.porId.get(alvoArmado.categoriaId) : undefined;
     if (!cat) return;
-    // O id do nó sai do título e não é mais editável depois — por isso o título é
-    // perguntado agora, e não deixado como "sem título" pra corrigir no modal.
-    const titulo = window.prompt(`Título do novo ${alvoArmado.tipo}:`)?.trim();
+    // O id nasce do título, mas depois fica estável mesmo que o nome mude. Perguntar agora
+    // evita criar o objeto com um título artificial antes de abrir o modal de detalhes.
+    const titulo = (await pedirTexto(`Título do novo ${alvoArmado.tipo}:`))?.trim();
     if (!titulo) return;
     try {
       const chave = cat.forma_por;
@@ -328,6 +525,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
       const posicao = { x: Math.round(alvo.x - largura / 2), y: Math.round(alvo.y - altura / 2) };
       posicoesPendentes.current.set(id, posicao);
       wsRef.current?.enviar({ t: "soltou", no: id, x: posicao.x, y: posicao.y });
+      // Depois do título, o segundo modal permite preencher os demais dados do objeto.
       setAberto(id);
     } catch (e) {
       setFalha((e as Error).message);
@@ -365,10 +563,17 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     rf.current.updateNode(id, { selected: true });
   }
 
-  // A roda do botão direito continua oferecendo só a categoria principal: menu radial com
-  // todos os objetos de todas as categorias viraria ilegível.
-  const principal = catalogo?.categorias[0];
-  const tipos = tiposDeForma(principal);
+  // A roda passou a ter dois anéis: categoria por dentro, objetos dela por fora. Por isso
+  // ela deixou de mostrar só a principal — categoria vazia fica fora para não virar setor
+  // morto no anel interno.
+  const categoriasDaRoda: CategoriaRoda[] = (catalogo?.categorias ?? [])
+    .map((c) => ({
+      id: c.id,
+      nome: c.nome,
+      tipos: tiposDeForma(c),
+      formaDoTipo: (t: string) => formaDoTipo(c, t),
+    }))
+    .filter((c) => c.tipos.length > 0);
   const meuId = usuario.id;
 
   // Barra lateral e canvas leem a mesma lista de nós — nada de segunda fonte da verdade.
@@ -402,9 +607,9 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
           />
           {somenteLeitura ? <span className="selo">somente leitura</span> : null}
 
-          {!somenteLeitura ? (
-            <div className="modos" role="group" aria-label="ferramenta">
-              <button
+            {!somenteLeitura ? (
+              <div className="modos" role="group" aria-label="ferramenta">
+                <button
                 type="button"
                 aria-pressed={modo === "selecao"}
                 title="selecionar (V) — arraste desenha o retângulo de seleção"
@@ -416,11 +621,20 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
                 type="button"
                 aria-pressed={modo === "mao"}
                 title="mover (H) — arraste move a tela"
-                onClick={() => setModo("mao")}
-              >
-                ✋ mover
-              </button>
-            </div>
+                  onClick={() => setModo("mao")}
+                >
+                  ✋ mover
+                </button>
+                <button type="button" title="copiar seleção (Ctrl/Cmd+C)" onClick={() => copiarRef.current()}>
+                  ⧉ copiar
+                </button>
+                <button type="button" title="colar seleção (Ctrl/Cmd+V)" onClick={() => colarRef.current()}>
+                  ⎘ colar
+                </button>
+                <button type="button" title="cortar seleção (Ctrl/Cmd+X)" onClick={() => cortarRef.current()}>
+                  ✂ cortar
+                </button>
+              </div>
           ) : null}
 
           {falha ? <span className="erro">{falha}</span> : null}
@@ -520,11 +734,14 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             }}
             onPaneContextMenu={(e) => {
               e.preventDefault();
-              if (somenteLeitura || tipos.length === 0 || !rf.current) return;
+              cancelarPressao();
               const { clientX, clientY } = e as React.MouseEvent;
-              const alvo = rf.current.screenToFlowPosition({ x: clientX, y: clientY });
-              setRoda({ x: clientX, y: clientY, alvo });
+              abrirRoda(clientX, clientY, "clique");
             }}
+            onPointerDown={aoPressionar}
+            onPointerMove={aoMoverPonteiro}
+            onPointerUp={cancelarPressao}
+            onPointerCancel={cancelarPressao}
             onDragOver={(e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = "copy";
@@ -554,15 +771,15 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
           </ReactFlow>
         </div>
 
-        {roda && principal ? (
+        {roda ? (
           <RodaFormas
             x={roda.x}
             y={roda.y}
-            tipos={tipos}
-            formaDoTipo={(t) => formaDoTipo(principal, t)}
-            aoEscolher={(tipo) => {
+            categorias={categoriasDaRoda}
+            gesto={roda.gesto}
+            aoEscolher={(categoriaId, tipo) => {
               setRoda(null);
-              void criar({ categoriaId: principal.id, tipo }, roda.alvo);
+              void criar({ categoriaId, tipo }, roda.alvo);
             }}
             aoFechar={() => setRoda(null)}
           />
@@ -585,7 +802,42 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             presenca={presenca}
             meuId={meuId}
             enviarEditando={(no) => wsRef.current?.enviar({ t: "editando", no })}
+            tamanho={(() => {
+              const no = rf.current?.getNode(aberto);
+              return { width: no?.width, height: no?.height };
+            })()}
+            aoRedimensionar={(width, height) => {
+              rf.current?.updateNode(aberto, { width, height });
+              setRender((prev) => ({
+                ...prev,
+                nos: prev.nos.map((n) => (n.id === aberto ? { ...n, width, height } : n)),
+              }));
+            }}
             aoFechar={() => setAberto(null)}
+          />
+        ) : null}
+        {dialogo?.tipo === "confirmacao" ? (
+          <DialogoConfirmacao
+            mensagem={dialogo.mensagem}
+            confirmar="confirmar"
+            aoCancelar={fecharDialogo}
+            aoConfirmar={() => {
+              const atual = dialogo;
+              setDialogo(null);
+              atual.resolver(true);
+            }}
+          />
+        ) : dialogo?.tipo === "texto" ? (
+          <DialogoTexto
+            mensagem={dialogo.mensagem}
+            valor=""
+            confirmar="criar"
+            aoCancelar={fecharDialogo}
+            aoConfirmar={(valor) => {
+              const atual = dialogo;
+              setDialogo(null);
+              atual.resolver(valor);
+            }}
           />
         ) : null}
       </div>

@@ -146,6 +146,17 @@ export async function atualizarCampos(
   return no ? { ...no, erro: no.erro ?? undefined } : null;
 }
 
+export async function atualizarTitulo(pool: Pool, projetoId: string, id: string, titulo: string): Promise<No | null> {
+  const r = await pool.query<No>(
+    `update nos set titulo = $3, atualizado_em = now()
+       where projeto_id = $1 and id = $2 and apagado_em is null
+       returning id, titulo, categoria_id, campos, versao, erro`,
+    [projetoId, id, titulo],
+  );
+  const no = r.rows[0];
+  return no ? { ...no, erro: no.erro ?? undefined } : null;
+}
+
 export type ResultadoCorpo =
   | { status: "ok"; versao: number }
   | { status: "conflito"; versao: number; corpo: string }
@@ -178,9 +189,12 @@ export async function atualizarCorpo(
   // agora contra o valor que de fato está no banco.
   if (!r.rows[0]) {
     const recheque = await pool.query<{ versao: number; corpo: string }>(
-      "select versao, corpo from nos where projeto_id = $1 and id = $2",
+      "select versao, corpo from nos where projeto_id = $1 and id = $2 and apagado_em is null",
       [projetoId, id],
     );
+    // O nó pode ter sido apagado entre o SELECT e o UPDATE. Não tente ler
+    // `rows[0]` nesse caso: a corrida corpo×delete é um 404 legítimo.
+    if (!recheque.rows[0]) return { status: "nao-encontrado" };
     return { status: "conflito", versao: recheque.rows[0].versao, corpo: recheque.rows[0].corpo };
   }
   return { status: "ok", versao: r.rows[0].versao };

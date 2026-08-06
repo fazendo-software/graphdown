@@ -32,8 +32,8 @@ export type GrafoResposta = {
 export type NoDetalhe = {
   id: string;
   categoria_id: string;
-  /** Nome de exibição do nó — coluna própria, não um campo de `campos`. Não editável
-   * aqui: o contrato não tem rota de renomear (o id deriva do título só na criação). */
+  /** Nome de exibição do nó — coluna própria, não um campo de `campos`. Pode mudar sem
+   * mudar o id: o id só é derivado do título no momento da criação. */
   titulo: string;
   campos: Record<string, unknown>;
   corpo: string;
@@ -108,10 +108,15 @@ export function apiProjeto(projetoId: string) {
         method: "POST",
         body: JSON.stringify({ titulo, categoria_id: categoriaId, campos }),
       }),
-    patchNo: (id: string, campos: Record<string, unknown>) =>
+    patchNo: (id: string, campos: Record<string, unknown>, titulo?: string) =>
       pedir<{ ok: true }>(`${base}/nos/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        body: JSON.stringify({ campos }),
+        body: JSON.stringify({ campos, ...(titulo === undefined ? {} : { titulo }) }),
+      }),
+    renomearNo: (id: string, titulo: string) =>
+      pedir<{ ok: true }>(`${base}/nos/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ titulo }),
       }),
     /** 409 vira ErroConflito, com a versão e o corpo atuais do servidor. */
     putCorpo: async (id: string, corpo: string, versao: number): Promise<{ ok: true; versao: number }> => {

@@ -101,7 +101,7 @@ export function rotuloDaAresta(cat: Catalogo, a: ArestaComId): string | undefine
   return texto || undefined;
 }
 
-export function nodeDeReal(no: No, cat: Catalogo, posicao: Posicao): Node {
+export function nodeDeReal(no: No, cat: Catalogo, posicao: Posicao, somenteLeitura = false): Node {
   const categoria = categoriaDoNo(cat, no.categoria_id);
   return {
     id: no.id,
@@ -115,6 +115,7 @@ export function nodeDeReal(no: No, cat: Catalogo, posicao: Posicao): Node {
       tipo: tipoDoNo(categoria, no.campos),
       categoria: categoria?.nome ?? "",
       erro: no.erro,
+      somenteLeitura,
     } as DadosNo,
   };
 }
@@ -168,7 +169,7 @@ export function montarTudo(
   aoSalvarNota: (id: string, conteudo: string) => void,
 ): RenderState {
   const reais = new Set(g.nos.map((n) => n.id));
-  const nos = g.nos.map((n) => nodeDeReal(n, cat, layout[n.id] ?? { x: 0, y: 0 }));
+  const nos = g.nos.map((n) => nodeDeReal(n, cat, layout[n.id] ?? { x: 0, y: 0 }, somenteLeitura));
   for (const id of g.fantasmas) {
     if (reais.has(id)) continue;
     nos.push(nodeDeFantasma(id, layout[id] ?? { x: 0, y: 0 }));

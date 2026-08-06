@@ -71,7 +71,11 @@ export function aplicarDiffRender(prev: RenderState, msg: MsgServidor, ctx: Cont
     case "no-mudou": {
       const existente = prev.nos.find((n) => n.id === msg.no.id && !(n.data as DadosNo).fantasma);
       const posicao = existente?.position ?? ctx.posicaoPendente(msg.no.id) ?? { x: 0, y: 0 };
-      const nos = [...prev.nos.filter((n) => n.id !== msg.no.id), c.noReal(msg.no, posicao)];
+      const novo = c.noReal(msg.no, posicao);
+      const nos = [
+        ...prev.nos.filter((n) => n.id !== msg.no.id),
+        { ...novo, width: existente?.width, height: existente?.height },
+      ];
       return { ...prev, nos: reconciliarFantasmas(nos, prev.arestas, c.noFantasma) };
     }
     case "no-apagado": {

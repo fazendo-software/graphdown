@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import type { NodeProps } from "@xyflow/react";
+import { NodeResizer, type NodeProps } from "@xyflow/react";
 
 export const NOTA_LARGURA = 176;
 
@@ -14,7 +14,7 @@ export type DadosNota = {
  * Post-it: nó do React Flow sem handle nenhum — nota não se conecta a nada, é anotação
  * livre sobre o canvas. Sem `Handle`, o React Flow não deixa puxar aresta dela.
  */
-function Componente({ data, selected }: NodeProps) {
+function Componente({ data, selected, width, height }: NodeProps) {
   const { conteudo, somenteLeitura, aoSalvar } = data as DadosNota;
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState(conteudo);
@@ -36,11 +36,12 @@ function Componente({ data, selected }: NodeProps) {
   return (
     <div
       className={`nota${selected ? " selecionada" : ""}`}
-      style={{ width: NOTA_LARGURA }}
+      style={{ width: width ?? NOTA_LARGURA, minHeight: height }}
       onDoubleClick={() => {
         if (!somenteLeitura) setEditando(true);
       }}
     >
+      <NodeResizer isVisible={Boolean(selected && !somenteLeitura)} minWidth={20} minHeight={20} color="#facc15" />
       {editando ? (
         <textarea
           ref={campo}

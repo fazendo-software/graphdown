@@ -1,8 +1,9 @@
-import { memo, useEffect, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { desenharForma } from "./rough.ts";
 import { useCores } from "./tema.ts";
 
-const RAIO = 74;
+import { ANGULOS_OBJETO, anguloCategoria, RAIO_CATEGORIA, RAIO_OBJETO } from "./rodaGeometria.ts";
+
 const MINI = { largura: 40, altura: 28 };
 
 function Miniatura({ forma }: { forma: string }) {
@@ -25,16 +26,34 @@ function Miniatura({ forma }: { forma: string }) {
   );
 }
 
+export type CategoriaRoda = {
+  id: string;
+  nome: string;
+  tipos: string[];
+  formaDoTipo: (tipo: string) => string;
+};
+
 type Props = {
   x: number;
   y: number;
-  tipos: string[];
-  formaDoTipo: (tipo: string) => string;
-  aoEscolher: (tipo: string) => void;
+  categorias: CategoriaRoda[];
+  /** `segurar`: abriu com o botão esquerdo pressionado, soltar sobre um objeto escolhe.
+   * `clique`: abriu pelo menu de contexto e fica de pé até clicarem. */
+  gesto: "segurar" | "clique";
+  aoEscolher: (categoriaId: string, tipo: string) => void;
   aoFechar: () => void;
 };
 
-function Componente({ x, y, tipos, formaDoTipo, aoEscolher, aoFechar }: Props) {
+function posicao(ang: number, raio: number) {
+  return `translate(-50%, -50%) translate(${Math.cos(ang) * raio}px, ${Math.sin(ang) * raio}px)`;
+}
+
+function Componente({ x, y, categorias, gesto, aoEscolher, aoFechar }: Props) {
+  const [aberta, setAberta] = useState<string | null>(
+    // Uma categoria só: não há o que escolher no anel interno, já abre os objetos dela.
+    categorias.length === 1 ? categorias[0].id : null,
+  );
+
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       if (e.key === "Escape") aoFechar();
@@ -43,30 +62,63 @@ function Componente({ x, y, tipos, formaDoTipo, aoEscolher, aoFechar }: Props) {
     return () => window.removeEventListener("keydown", tecla);
   }, [aoFechar]);
 
+  useEffect(() => {
+    // No gesto de segurar, soltar em qualquer lugar encerra. O `pointerup` do próprio item
+    // roda antes deste (borbulha), então escolher continua funcionando.
+    if (gesto !== "segurar") return;
+    const soltou = () => aoFechar();
+    window.addEventListener("pointerup", soltou);
+    return () => window.removeEventListener("pointerup", soltou);
+  }, [gesto, aoFechar]);
+
+  const indiceAberta = categorias.findIndex((c) => c.id === aberta);
+  const categoriaAberta = indiceAberta >= 0 ? categorias[indiceAberta] : undefined;
+  const angCategoria = (i: number) => anguloCategoria(i, categorias.length);
+
   return (
     // Fundo transparente cobrindo a tela: qualquer clique fora fecha sem criar nada.
     <div className="roda-fundo" onClick={aoFechar} onContextMenu={(e) => e.preventDefault()}>
       <div className="roda" style={{ left: x, top: y }} onClick={(e) => e.stopPropagation()}>
-        {tipos.map((tipo, i) => {
-          // -90° para a primeira figura nascer em cima, não à direita.
-          const ang = (i / tipos.length) * 2 * Math.PI - Math.PI / 2;
-          return (
-            <button
-              key={tipo}
-              type="button"
-              className="roda-item"
-              style={{
-                transform: `translate(-50%, -50%) translate(${Math.cos(ang) * RAIO}px, ${
-                  Math.sin(ang) * RAIO
-                }px)`,
-              }}
-              onClick={() => aoEscolher(tipo)}
-            >
-              <Miniatura forma={formaDoTipo(tipo)} />
-              <span>{tipo}</span>
-            </button>
-          );
-        })}
+        <span className="roda-centro" aria-hidden="true" />
+
+        {categorias.map((cat, i) => (
+          <button
+            key={cat.id}
+            type="button"
+            className="roda-cat"
+            aria-pressed={cat.id === aberta}
+            style={{ transform: posicao(angCategoria(i), RAIO_CATEGORIA) }}
+            // Hover abre: no gesto de segurar não há clique intermediário para dar, e no
+            // gesto de clique passar o mouse é o mesmo que o usuário já esperaria.
+            onPointerEnter={() => setAberta(cat.id)}
+            onFocus={() => setAberta(cat.id)}
+          >
+            {cat.nome}
+          </button>
+        ))}
+
+        {categoriaAberta
+          ? (() => {
+              const angulos = ANGULOS_OBJETO(
+                categoriaAberta.tipos.length,
+                angCategoria(indiceAberta),
+              );
+              return categoriaAberta.tipos.map((tipo, j) => (
+                <button
+                  key={tipo}
+                  type="button"
+                  className="roda-item"
+                  style={{ transform: posicao(angulos[j], RAIO_OBJETO) }}
+                  // `pointerup` e não `click`: serve para soltar depois de segurar E para o
+                  // clique comum, sem dois caminhos separados.
+                  onPointerUp={() => aoEscolher(categoriaAberta.id, tipo)}
+                >
+                  <Miniatura forma={categoriaAberta.formaDoTipo(tipo)} />
+                  <span>{tipo}</span>
+                </button>
+              ));
+            })()
+          : null}
       </div>
     </div>
   );

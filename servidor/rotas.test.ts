@@ -215,6 +215,33 @@ test("POST /arestas liga dois nós; religar o mesmo par dá 409", async () => {
   }
 });
 
+test("POST /arestas com destino inexistente dá 404, não 500", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const { cliente } = await registrar(base);
+    const projetoId = await criarProjetoDeTeste(cliente);
+    const origem = await (await cliente.post(`/api/projetos/${projetoId}/nos`, { titulo: "Origem" })).json();
+    const r = await cliente.post(`/api/projetos/${projetoId}/arestas`, { de: origem.id, para: "nao-existe" });
+    assert.equal(r.status, 404);
+  } finally {
+    await fechar();
+  }
+});
+
+test("PATCH e DELETE de aresta recusam id que não é UUID", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const { cliente } = await registrar(base);
+    const projetoId = await criarProjetoDeTeste(cliente);
+    const patch = await cliente.patch(`/api/projetos/${projetoId}/arestas/invalido`, { quando: "x" });
+    const apagar = await cliente.delete(`/api/projetos/${projetoId}/arestas/invalido`);
+    assert.equal(patch.status, 404);
+    assert.equal(apagar.status, 404);
+  } finally {
+    await fechar();
+  }
+});
+
 test("PATCH /arestas distingue campo omitido de campo limpo", async () => {
   const { base, fechar } = await subirServidor();
   try {

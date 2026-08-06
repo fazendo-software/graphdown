@@ -1,6 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import type { Aresta, Layout } from "../../core/tipos.ts";
-import { tamanhoDe, type Tamanho } from "./rough.ts";
+import { tamanhoDoNo, type Tamanho } from "./rough.ts";
 
 /**
  * Calcula posição só para os ids sem posição salva. Quem já tem, não se mexe.
@@ -16,7 +16,7 @@ export function completarLayout(
   const faltando = ids.filter((id) => !salvo[id]);
   if (faltando.length === 0) return salvo;
 
-  const tamanho = (id: string): Tamanho => tamanhoDe(formaDe(id));
+  const tamanho = (id: string): Tamanho => tamanhoDoNo(formaDe(id));
 
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 90 });

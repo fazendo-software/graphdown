@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Papel } from "../../core/tipos.ts";
 import type { apiProjeto, ArestaComId } from "./api.ts";
 import type { Catalogo } from "./grafoRender.ts";
+import { DialogoConfirmacao } from "./Dialogos.tsx";
 
 type Props = {
   aresta: ArestaComId;
@@ -19,6 +20,7 @@ export function ModalAresta({ aresta, catalogo, papel, api, aoFechar }: Props) {
     Object.fromEntries(Object.entries(aresta.campos).map(([k, v]) => [k, v == null ? "" : String(v)])),
   );
   const [falha, setFalha] = useState<string | null>(null);
+  const [confirmando, setConfirmando] = useState(false);
   const somenteLeitura = papel === "leitor";
 
   // Estilos e recursos vêm fundidos do servidor: a aresta liga nós de categorias
@@ -42,7 +44,11 @@ export function ModalAresta({ aresta, catalogo, papel, api, aoFechar }: Props) {
   }
 
   async function remover() {
-    if (!window.confirm(`Desligar "${aresta.de}" de "${aresta.para}"?`)) return;
+    setConfirmando(true);
+  }
+
+  async function confirmarRemocao() {
+    setConfirmando(false);
     try {
       await api.apagarAresta(aresta.id);
       aoFechar();
@@ -54,6 +60,7 @@ export function ModalAresta({ aresta, catalogo, papel, api, aoFechar }: Props) {
   return (
     <div className="modal-fundo" onClick={aoFechar}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-fechar" type="button" aria-label="fechar" title="fechar" onClick={aoFechar}>×</button>
         <h2>
           <code>{aresta.de}</code> → <code>{aresta.para}</code>
         </h2>
@@ -131,9 +138,17 @@ export function ModalAresta({ aresta, catalogo, papel, api, aoFechar }: Props) {
               desligar
             </button>
           ) : null}
-          <button onClick={aoFechar}>{somenteLeitura ? "fechar" : "cancelar"}</button>
+          {!somenteLeitura ? <button onClick={aoFechar}>cancelar</button> : null}
           {!somenteLeitura ? <button onClick={() => void salvar()}>salvar</button> : null}
         </div>
+        {confirmando ? (
+          <DialogoConfirmacao
+            mensagem={`Desligar "${aresta.de}" de "${aresta.para}"?`}
+            confirmar="desligar"
+            aoCancelar={() => setConfirmando(false)}
+            aoConfirmar={() => void confirmarRemocao()}
+          />
+        ) : null}
       </div>
     </div>
   );

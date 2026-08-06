@@ -12,6 +12,13 @@ export function seedDoId(id: string): number {
 
 export type Traco = { d: string; stroke: string; fill: string; strokeWidth: number };
 export type Tamanho = { largura: number; altura: number };
+/** Espaço reservado para o rótulo que fica abaixo do desenho do objeto. */
+export const ALTURA_ROTULO = 30;
+
+export function tamanhoDoNo(forma: string): Tamanho {
+  const tamanho = tamanhoDe(forma);
+  return { largura: tamanho.largura, altura: tamanho.altura + ALTURA_ROTULO };
+}
 
 // Tamanho por forma, nao global: losango achatado num box 200x76 nao le como decisao.
 // Mora aqui e nao no componente porque o layout (dagre) precisa disso sem tocar em React.

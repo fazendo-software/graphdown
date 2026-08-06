@@ -4,6 +4,7 @@ import type { Aresta } from "../core/tipos.ts";
 export type ArestaComId = Aresta & { id: string };
 
 const CODIGO_UNIQUE_VIOLATION = "23505";
+const CODIGO_FOREIGN_KEY_VIOLATION = "23503";
 
 export async function listarArestas(pool: Pool, projetoId: string): Promise<ArestaComId[]> {
   const r = await pool.query<ArestaComId>(
@@ -36,7 +37,7 @@ export async function criarAresta(
   de: string,
   para: string,
   tipo?: string | null,
-): Promise<{ id: string } | { conflito: true }> {
+): Promise<{ id: string } | { conflito: true } | { naoEncontrada: true }> {
   try {
     const r = await pool.query<{ id: string }>(
       "insert into arestas (projeto_id, de, para, tipo) values ($1, $2, $3, $4) returning id",
@@ -45,6 +46,7 @@ export async function criarAresta(
     return { id: r.rows[0].id };
   } catch (erro) {
     if ((erro as { code?: string }).code === CODIGO_UNIQUE_VIOLATION) return { conflito: true };
+    if ((erro as { code?: string }).code === CODIGO_FOREIGN_KEY_VIOLATION) return { naoEncontrada: true };
     throw erro;
   }
 }

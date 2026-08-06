@@ -49,6 +49,27 @@ transação, transmitida pela sala depois de commitada.
 
 Ver `.traycer` (artefatos do epic) para o contrato completo de schema, rotas e protocolo.
 
+## Interações do canvas
+
+- Crie um objeto pela paleta ou segurando o botão esquerdo sobre uma área vazia por cerca
+  de 220 ms. Mover mais de 6 px cancela o gesto; o menu de contexto continua abrindo a
+  mesma roda. Primeiro informe o título e, no segundo modal, preencha os demais dados e
+  clique em **concluir**.
+- `Ctrl`/`Cmd`+`A` seleciona somente nós e notas do canvas — setas não entram na seleção.
+  `Ctrl`/`Cmd`+`C`, `X` e `V` copiam, cortam e colam a seleção; ao colar, o conjunto é
+  deslocado 40 px e só as setas cujas duas pontas foram copiadas são recriadas. A área de
+  transferência é interna ao app e dura apenas enquanto a página está aberta.
+- Selecione um nó ou nota para redimensioná-lo. O limite inferior é 20×20 px e não altera
+  o zoom. No modal do nó, o nome é editável e a engrenagem revela o id e controles de
+  tamanho proporcional (20–1000 px). Por enquanto esse tamanho visual não é persistido
+  nem sincronizado entre clientes.
+- Todos os pedidos de texto e confirmação usam modais da aplicação; o `×` no canto
+  superior direito fecha o modal.
+
+`PATCH /api/projetos/:projeto/nos/:no` aceita `{ titulo }`, `{ campos }` ou ambos. As
+alterações de nó e aresta tratam itens que desapareceram durante a operação como `404`, e
+`PATCH`/`DELETE` de aresta validam o UUID antes de consultar o Postgres.
+
 ## Testes
 
 Precisam de um Postgres acessível em `DATABASE_URL` (schema aplicado automaticamente pelos

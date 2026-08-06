@@ -19,7 +19,7 @@ import { resolverMembership } from "./membros.ts";
 import { listarCategorias, buscarCategoriaPorId, categoriaDoProjeto } from "./categorias.ts";
 import { apagarProjeto, buscarProjeto, criarProjeto, listarProjetos } from "./projetos.ts";
 import { montarGrafo } from "./grafo.ts";
-import { apagarNo, atualizarCampos, atualizarCorpo, buscarNo, buscarNos, criarNo } from "./nos.ts";
+import { apagarNo, atualizarCampos, atualizarCorpo, atualizarTitulo, buscarNo, buscarNos, criarNo } from "./nos.ts";
 import { apagarAresta, atualizarAresta, criarAresta } from "./arestas.ts";
 import { apagarNota, atualizarNota, criarNota, listarNotas, type PatchNota } from "./notas.ts";
 import { corpoJson, ErroPayloadGrande, origemPermitida } from "./seguranca.ts";
@@ -284,8 +284,17 @@ async function lidar(req: IncomingMessage, res: ServerResponse, pool: Pool, sala
 
     if (metodo === "PATCH") {
       if (!exigirEscrita(res, ctx.papel)) return;
-      const { campos } = (await corpoJson(req)) as { campos?: Record<string, unknown> };
-      if (!campos) return json(res, 400, { erro: "campos obrigatório" });
+      const { campos, titulo } = (await corpoJson(req)) as {
+        campos?: Record<string, unknown>;
+        titulo?: string;
+      };
+      if (titulo !== undefined) {
+        if (typeof titulo !== "string" || !titulo.trim()) return json(res, 400, { erro: "titulo obrigatório" });
+        const no = await atualizarTitulo(pool, projetoId, id, titulo.trim());
+        if (!no) return json(res, 404, { erro: "nó não encontrado" });
+        sala.transmitir(projetoId, { t: "no-mudou", no });
+      }
+      if (!campos) return titulo !== undefined ? json(res, 200, { ok: true }) : json(res, 400, { erro: "campos obrigatório" });
       // Valida contra a categoria DO NÓ, não a do projeto: um projeto mistura várias.
       const atual = await buscarNo(pool, projetoId, id);
       if (!atual) return json(res, 404, { erro: "nó não encontrado" });
@@ -318,6 +327,7 @@ async function lidar(req: IncomingMessage, res: ServerResponse, pool: Pool, sala
     if (!de || !para) return json(res, 400, { erro: "de e para obrigatórios" });
     const r = await criarAresta(pool, projetoId, de, para, tipo);
     if ("conflito" in r) return json(res, 409, { erro: "já existe aresta entre esses nós" });
+    if ("naoEncontrada" in r) return json(res, 404, { erro: "nó não encontrado" });
     sala.transmitir(projetoId, {
       t: "aresta-criada",
       aresta: { id: r.id, de, para, tipo: tipo ?? undefined, campos: {} },
@@ -331,6 +341,8 @@ async function lidar(req: IncomingMessage, res: ServerResponse, pool: Pool, sala
     const ctx = await exigirProjeto(req, res, pool, projetoId);
     if (!ctx) return;
     if (!exigirEscrita(res, ctx.papel)) return;
+    // `id` é UUID gerado pelo banco. Validar antes da query evita erro de cast no Postgres.
+    if (!RE_UUID.test(id)) return json(res, 404, { erro: "aresta não encontrada" });
 
     if (metodo === "PATCH") {
       const patch = (await corpoJson(req)) as {

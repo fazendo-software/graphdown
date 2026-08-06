@@ -1,6 +1,6 @@
 import { memo, useMemo, type CSSProperties } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { desenharForma, seedDoId, tamanhoDe } from "./rough.ts";
+import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
+import { ALTURA_ROTULO, desenharForma, seedDoId, tamanhoDe } from "./rough.ts";
 import { useCores } from "./tema.ts";
 
 export type DadosNo = {
@@ -16,6 +16,7 @@ export type DadosNo = {
   erro?: string;
   /** Nome de quem está arrastando este nó agora, se for outra pessoa. */
   movidoPor?: string;
+  somenteLeitura?: boolean;
 };
 
 const CENTRADO: CSSProperties = {
@@ -38,10 +39,15 @@ const RECUO_PADRAO: CSSProperties = { padding: "12px 14px" };
 
 const LADOS = [Position.Top, Position.Right, Position.Bottom, Position.Left];
 
-function Componente({ id, data, selected }: NodeProps) {
-  const { titulo, cor, forma, fantasma, erro, movidoPor } = data as DadosNo;
+function Componente({ id, data, selected, width, height }: NodeProps) {
+  const { titulo, cor, forma, fantasma, erro, movidoPor, somenteLeitura } = data as DadosNo;
   const seed = useMemo(() => seedDoId(id), [id]);
-  const { largura, altura } = tamanhoDe(forma);
+  const padrao = tamanhoDe(forma);
+  // Durante a primeira medição o React Flow pode entregar 0. Usar esse valor
+  // zerava o SVG: o nó existia na lista, mas ficava invisível no canvas.
+  const largura = width && width > 0 ? width : padrao.largura;
+  const alturaTotal = height && height > 0 ? height : padrao.altura + ALTURA_ROTULO;
+  const altura = Math.max(20, alturaTotal - ALTURA_ROTULO);
   const cores = useCores();
 
   // Depende so do que muda a forma. Arrastar move por transform CSS e nao re-desenha.
@@ -56,30 +62,45 @@ function Componente({ id, data, selected }: NodeProps) {
         fill: fantasma || erro ? undefined : `${cor}${cores.alfa}`,
         fillStyle: "solid",
         strokeLineDash: fantasma || erro ? [8, 6] : undefined,
-      }),
-    [seed, forma, cor, selected, fantasma, erro, cores.alfa],
+      }, { largura, altura }),
+    [seed, forma, cor, selected, fantasma, erro, cores.alfa, largura, altura],
   );
 
   return (
-    <div style={{ width: largura, height: altura, position: "relative" }}>
-      {/* Um handle por lado. Com connectionMode Loose o React Flow deixa puxar e soltar
-          em qualquer um deles, e a aresta flutuante escolhe sozinha por onde sair. */}
-      {LADOS.map((lado) => (
-        <Handle key={lado} id={lado} type="source" position={lado} className="lado" />
-      ))}
-      <svg width={largura} height={altura} style={{ position: "absolute", inset: 0 }}>
-        {tracos.map((t, i) => (
-          <path key={i} d={t.d} stroke={t.stroke} fill={t.fill} strokeWidth={t.strokeWidth} />
+    <div style={{ width: largura, minHeight: alturaTotal, position: "relative" }}>
+      <NodeResizer
+        isVisible={Boolean(selected && !somenteLeitura && !fantasma)}
+        minWidth={20}
+        minHeight={20}
+        color={cor}
+      />
+      <div style={{ position: "relative", width: largura, height: altura }}>
+        {/* Um handle por lado. Com connectionMode Loose o React Flow deixa puxar e soltar
+            em qualquer um deles, e a aresta flutuante escolhe sozinha por onde sair. */}
+        {LADOS.map((lado) => (
+          <Handle key={lado} id={lado} type="source" position={lado} className="lado" />
         ))}
-      </svg>
+        <svg width={largura} height={altura} style={{ position: "absolute", inset: 0 }}>
+          {tracos.map((t, i) => (
+            <path key={i} d={t.d} stroke={t.stroke} fill={t.fill} strokeWidth={t.strokeWidth} />
+          ))}
+        </svg>
+      </div>
       <div
         style={{
           position: "relative",
+          minHeight: ALTURA_ROTULO,
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "center",
+          textAlign: "center",
+          overflow: "visible",
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
           fontSize: 14,
           lineHeight: 1.3,
           color: erro ? "#dc2626" : cores.texto,
           pointerEvents: "none",
-          ...(RECUO[forma] ?? RECUO_PADRAO),
         }}
       >
         <span>
