@@ -13,6 +13,8 @@ export function DialogoConfirmacao({ mensagem, confirmar, aoConfirmar, aoCancela
   return (
     <div className="modal-fundo" onClick={aoCancelar} role="presentation">
       <div className="modal dialogo" role="dialog" aria-modal="true" aria-label="confirmação" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-fechar" type="button" aria-label="fechar" title="fechar" onClick={aoCancelar}>×</button>
+        <h2>confirmar ação</h2>
         <p>{mensagem}</p>
         <div className="modal-acoes">
           <button type="button" onClick={aoCancelar}>cancelar</button>
@@ -40,6 +42,8 @@ export function DialogoTexto({ mensagem, valor, confirmar, aoConfirmar, aoCancel
   return (
     <div className="modal-fundo" onClick={aoCancelar} role="presentation">
       <div className="modal dialogo" role="dialog" aria-modal="true" aria-label={mensagem} onClick={(e) => e.stopPropagation()}>
+        <button className="modal-fechar" type="button" aria-label="fechar" title="fechar" onClick={aoCancelar}>×</button>
+        <h2>novo objeto</h2>
         <label htmlFor="dialogo-texto">{mensagem}</label>
         <input
           ref={campo}

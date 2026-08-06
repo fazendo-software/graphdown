@@ -41,7 +41,15 @@ function Componente({ data, selected, width, height }: NodeProps) {
         if (!somenteLeitura) setEditando(true);
       }}
     >
-      <NodeResizer isVisible={Boolean(selected && !somenteLeitura)} minWidth={20} minHeight={20} color="#facc15" />
+      <NodeResizer
+        isVisible={Boolean(selected && !somenteLeitura)}
+        minWidth={20}
+        minHeight={20}
+        maxWidth={1000}
+        maxHeight={1000}
+        keepAspectRatio
+        color="#facc15"
+      />
       {editando ? (
         <textarea
           ref={campo}

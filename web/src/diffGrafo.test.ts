@@ -159,6 +159,15 @@ test("nota selecionada continua selecionada depois do eco do próprio arraste", 
   assert.deepEqual(eco.nos[0].position, { x: 40, y: 50 });
 });
 
+test("nota redimensionada mantém o tamanho ao receber atualização do servidor", () => {
+  const nota = { id: "n1", conteudo: "x", x: 0, y: 0 };
+  const estado = aplicarDiffRender({ nos: [], arestas: [] }, { t: "nota-criada", nota }, ctx());
+  const redimensionada: RenderState = { ...estado, nos: [{ ...estado.nos[0], width: 240, height: 120 }] };
+  const eco = aplicarDiffRender(redimensionada, { t: "nota-mudou", nota: { ...nota, conteudo: "novo" } }, ctx());
+  assert.equal(eco.nos[0].width, 240);
+  assert.equal(eco.nos[0].height, 120);
+});
+
 test("nota não vira fantasma nem é confundida com origem de aresta", () => {
   const nota = { id: "n1", conteudo: "x", x: 0, y: 0 };
   const comNota = aplicarDiffRender({ nos: [nodeReal("a")], arestas: [] }, { t: "nota-criada", nota }, ctx());

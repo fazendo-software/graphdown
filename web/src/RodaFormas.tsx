@@ -3,6 +3,7 @@ import { desenharForma } from "./rough.ts";
 import { useCores } from "./tema.ts";
 
 import { ANGULOS_OBJETO, anguloCategoria, RAIO_CATEGORIA, RAIO_OBJETO } from "./rodaGeometria.ts";
+import { ehAtivacaoPorTeclado } from "./interacoesCanvas.ts";
 
 const MINI = { largura: 40, altura: 28 };
 
@@ -110,8 +111,12 @@ function Componente({ x, y, categorias, gesto, aoEscolher, aoFechar }: Props) {
                   className="roda-item"
                   style={{ transform: posicao(angulos[j], RAIO_OBJETO) }}
                   // `pointerup` e não `click`: serve para soltar depois de segurar E para o
-                  // clique comum, sem dois caminhos separados.
+                  // clique comum. `click` com detail 0 é Enter/Espaço; mouse já foi tratado
+                  // pelo pointerup e não pode criar o objeto duas vezes.
                   onPointerUp={() => aoEscolher(categoriaAberta.id, tipo)}
+                  onClick={(e) => {
+                    if (ehAtivacaoPorTeclado(e.detail)) aoEscolher(categoriaAberta.id, tipo);
+                  }}
                 >
                   <Miniatura forma={categoriaAberta.formaDoTipo(tipo)} />
                   <span>{tipo}</span>

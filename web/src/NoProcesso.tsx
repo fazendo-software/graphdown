@@ -46,8 +46,7 @@ function Componente({ id, data, selected, width, height }: NodeProps) {
   // Durante a primeira medição o React Flow pode entregar 0. Usar esse valor
   // zerava o SVG: o nó existia na lista, mas ficava invisível no canvas.
   const largura = width && width > 0 ? width : padrao.largura;
-  const alturaTotal = height && height > 0 ? height : padrao.altura + ALTURA_ROTULO;
-  const altura = Math.max(20, alturaTotal - ALTURA_ROTULO);
+  const altura = height && height > 0 ? height : padrao.altura;
   const cores = useCores();
 
   // Depende so do que muda a forma. Arrastar move por transform CSS e nao re-desenha.
@@ -66,12 +65,18 @@ function Componente({ id, data, selected, width, height }: NodeProps) {
     [seed, forma, cor, selected, fantasma, erro, cores.alfa, largura, altura],
   );
 
+  // A caixa do React Flow é só o desenho: o resizer preserva a proporção da forma.
+  // O rótulo é absoluto e o dagre reserva ALTURA_ROTULO em `tamanhoDoNo`, portanto
+  // continua abaixo sem entrar no cálculo de aspecto nem encavalar o próximo objeto.
   return (
-    <div style={{ width: largura, minHeight: alturaTotal, position: "relative" }}>
+    <div style={{ width: largura, height: altura, position: "relative" }}>
       <NodeResizer
         isVisible={Boolean(selected && !somenteLeitura && !fantasma)}
         minWidth={20}
         minHeight={20}
+        maxWidth={1000}
+        maxHeight={1000}
+        keepAspectRatio
         color={cor}
       />
       <div style={{ position: "relative", width: largura, height: altura }}>
@@ -88,7 +93,9 @@ function Componente({ id, data, selected, width, height }: NodeProps) {
       </div>
       <div
         style={{
-          position: "relative",
+          position: "absolute",
+          top: altura,
+          width: "100%",
           minHeight: ALTURA_ROTULO,
           display: "flex",
           alignItems: "flex-start",

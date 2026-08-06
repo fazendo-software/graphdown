@@ -4,6 +4,7 @@ import type { Papel } from "../../core/tipos.ts";
 import { ErroConflito, type apiProjeto, type NoDetalhe } from "./api.ts";
 import { categoriaDoNo, type Catalogo } from "./grafoRender.ts";
 import { DialogoConfirmacao } from "./Dialogos.tsx";
+import { TAMANHO_MAXIMO, TAMANHO_MINIMO, tamanhoProporcional } from "./tamanhoProporcional.ts";
 
 // html:false + a validação de link padrão do markdown-it (bloqueia javascript:/vbscript:/
 // data: fora de imagem) é a sanitização exigida pelo contrato: corpo agora é texto de
@@ -22,9 +23,6 @@ type Props = {
   aoRedimensionar?: (width: number, height: number) => void;
   aoFechar: () => void;
 };
-
-const TAMANHO_MINIMO = 20;
-const TAMANHO_MAXIMO = 1000;
 
 export function Modal({ id, catalogo, papel, api, presenca, meuId, enviarEditando, tamanho, aoRedimensionar, aoFechar }: Props) {
   const [no, setNo] = useState<NoDetalhe | null>(null);
@@ -92,13 +90,10 @@ export function Modal({ id, catalogo, papel, api, presenca, meuId, enviarEditand
     if (!aoRedimensionar) return;
     // Dimensão ainda é estado de renderização do canvas, não coluna do nó: manter esta
     // regra aqui impede a UI de prometer persistência ou colaboração que o protocolo não tem.
-    const seguro = Math.max(TAMANHO_MINIMO, Math.min(TAMANHO_MAXIMO, Math.round(valor)));
-    const proporcao = largura / Math.max(1, altura);
-    const w = lado === "largura" ? seguro : Math.max(TAMANHO_MINIMO, Math.min(TAMANHO_MAXIMO, Math.round(seguro * proporcao)));
-    const h = lado === "altura" ? seguro : Math.max(TAMANHO_MINIMO, Math.min(TAMANHO_MAXIMO, Math.round(seguro / proporcao)));
-    setLargura(w);
-    setAltura(h);
-    aoRedimensionar(w, h);
+    const proximo = tamanhoProporcional({ largura, altura }, lado, valor);
+    setLargura(proximo.largura);
+    setAltura(proximo.altura);
+    aoRedimensionar(proximo.largura, proximo.altura);
   }
 
   async function salvarCorpo(forcarVersao?: number) {

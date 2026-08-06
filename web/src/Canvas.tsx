@@ -19,7 +19,7 @@ import {
 import type { MsgServidor, Nota, Papel, Posicao, Projeto, Usuario } from "../../core/tipos.ts";
 import { apiProjeto, type ArestaComId } from "./api.ts";
 import { conectarWS, type ConexaoWS } from "./ws.ts";
-import { aplicarDiffRender, type RenderState } from "./diffGrafo.ts";
+import { aplicarDiffRender, preservarDimensoes, type RenderState } from "./diffGrafo.ts";
 import { NoProcesso, type DadosNo } from "./NoProcesso.tsx";
 import { NotaNo, type DadosNota } from "./NotaNo.tsx";
 import { ArestaRough } from "./ArestaRough.tsx";
@@ -32,6 +32,7 @@ import { PALETA, TemaProvider, gravarPreferencia, lerPreferencia, type Preferenc
 import { Modal } from "./Modal.tsx";
 import { ModalAresta } from "./ModalAresta.tsx";
 import { DialogoConfirmacao, DialogoTexto } from "./Dialogos.tsx";
+import { arestasInternas, deveProcessarAtalhoCanvas, posicaoColada } from "./interacoesCanvas.ts";
 import {
   categoriaDoNo,
   edgeDeAresta,
@@ -120,6 +121,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   // continua fazendo o que sempre fez — limpar a seleção —, e arrastar continua sendo pan
   // ou seleção: por isso o gesto exige tempo E imobilidade.
   const pressionado = useRef<{ x: number; y: number; timer: number } | null>(null);
+  const canvasAtivo = useRef(false);
   // A área de transferência é interna e propositalmente não usa `navigator.clipboard`:
   // ela carrega a estrutura do grafo (inclusive as relações), não um texto serializado.
   // Portanto não sobrevive a recarga nem pode ser colada em outro aplicativo.
@@ -171,7 +173,11 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
       );
       const layoutCompleto = completarLayout(idsTodos, g.arestas, g.layout, (id) => forma.get(id) ?? "retangulo");
       const corPadrao = PALETA[tema].aresta;
-      setRender(montarTudo(g, cat, layoutCompleto, corPadrao, somenteLeitura, salvarNota));
+      setRender((anterior) => {
+        const tamanhos = new Map(anterior.nos.map((no) => [no.id, no]));
+        const proximo = montarTudo(g, cat, layoutCompleto, corPadrao, somenteLeitura, salvarNota);
+        return { ...proximo, nos: proximo.nos.map((no) => preservarDimensoes(no, tamanhos.get(no.id))) };
+      });
       setFalha(null);
       if (!somenteLeitura) {
         for (const id of idsTodos) {
@@ -257,6 +263,20 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   }, []);
 
   useEffect(() => {
+    const atualizarContexto = (alvo: EventTarget | null) => {
+      canvasAtivo.current = alvo instanceof Element && Boolean(alvo.closest(".react-flow"));
+    };
+    const aoPointer = (e: PointerEvent) => atualizarContexto(e.target);
+    const aoFocar = (e: FocusEvent) => atualizarContexto(e.target);
+    document.addEventListener("pointerdown", aoPointer);
+    document.addEventListener("focusin", aoFocar);
+    return () => {
+      document.removeEventListener("pointerdown", aoPointer);
+      document.removeEventListener("focusin", aoFocar);
+    };
+  }, []);
+
+  useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setAberto(null);
@@ -266,9 +286,12 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
         return;
       }
       const alvo = e.target as HTMLElement | null;
-      if (alvo && /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName)) return;
+      const editavel = Boolean(alvo && (/^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName) || alvo.isContentEditable));
+      if (editavel) return;
       if (alvo?.closest(".modal")) return;
       if (e.metaKey || e.ctrlKey) {
+        const selecao = window.getSelection();
+        if (!deveProcessarAtalhoCanvas(canvasAtivo.current, editavel, Boolean(selecao && !selecao.isCollapsed))) return;
         if (e.key.toLowerCase() === "a") {
           // Seleção do canvas, não seleção de texto da página: Ctrl/Cmd+A marca
           // apenas nós e notas, mantendo as arestas fora da seleção.
@@ -321,6 +344,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   }
 
   function aoPressionar(e: React.PointerEvent) {
+    canvasAtivo.current = true;
     // Só o vazio: pressionar um nó é arrastar o nó, não abrir a roda.
     if (e.button !== 0 || armado || somenteLeitura) return;
     if (!(e.target as HTMLElement).classList.contains("react-flow__pane")) return;
@@ -407,10 +431,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     }
   }
 
-  async function copiarSelecionados(
-    nodes = render.nos.filter((n) => n.selected),
-    edges = render.arestas.filter((e) => e.selected),
-  ) {
+  async function copiarSelecionados(nodes = render.nos.filter((n) => n.selected)) {
     try {
       const itens: ItemCopiado[] = [];
       for (const node of nodes) {
@@ -438,8 +459,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
       const ids = new Set(itens.map((item) => item.id));
       areaTransferencia.current = {
         itens,
-        arestas: edges
-          .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
+        arestas: arestasInternas(render.arestas, ids)
           .map((edge) => {
             const a = (edge.data as DadosAresta).aresta;
             return { de: edge.source, para: edge.target, tipo: a.tipo, quando: a.quando, campos: a.campos };
@@ -454,14 +474,11 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   async function colarSelecionados() {
     if (somenteLeitura || !areaTransferencia.current || areaTransferencia.current.itens.length === 0) return;
     const copia = areaTransferencia.current;
-    const minX = Math.min(...copia.itens.map((item) => item.x));
-    const minY = Math.min(...copia.itens.map((item) => item.y));
     const deslocamento = 40;
     const novos = new Map<string, string>();
     try {
       for (const item of copia.itens) {
-        const x = Math.round(item.x - minX + deslocamento);
-        const y = Math.round(item.y - minY + deslocamento);
+        const { x, y } = posicaoColada(item, deslocamento);
         if (item.kind === "nota") {
           const nota = await api.criarNota(item.conteudo, x, y);
           novos.set(item.id, nota.id);
@@ -489,7 +506,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   function iniciarCorte() {
     const nodes = render.nos.filter((n) => n.selected);
     const edges = render.arestas.filter((e) => e.selected);
-    void copiarSelecionados(nodes, edges)
+    void copiarSelecionados(nodes)
       .then(() => aoApagar({ nodes, edges }))
       .catch(() => undefined);
   }
@@ -804,7 +821,8 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             enviarEditando={(no) => wsRef.current?.enviar({ t: "editando", no })}
             tamanho={(() => {
               const no = rf.current?.getNode(aberto);
-              return { width: no?.width, height: no?.height };
+              const padrao = no?.type === "processo" ? tamanhoDe((no.data as DadosNo).forma) : undefined;
+              return { width: no?.width ?? padrao?.largura, height: no?.height ?? padrao?.altura };
             })()}
             aoRedimensionar={(width, height) => {
               rf.current?.updateNode(aberto, { width, height });

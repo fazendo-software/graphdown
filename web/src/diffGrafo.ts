@@ -5,6 +5,11 @@ import type { DadosNo } from "./NoProcesso.tsx";
 
 export type RenderState = { nos: Node[]; arestas: Edge[] };
 
+/** Largura/altura pertencem ao cliente enquanto resize não entra no protocolo do servidor. */
+export function preservarDimensoes(novo: Node, anterior?: Node): Node {
+  return { ...novo, width: anterior?.width ?? novo.width, height: anterior?.height ?? novo.height };
+}
+
 /** Constrói a forma de renderização de um item — injetado porque depende de categoria/tema,
  * que este módulo não conhece (fica testável sem precisar simular isso). */
 export type ConstrutoresRender = {
@@ -74,7 +79,7 @@ export function aplicarDiffRender(prev: RenderState, msg: MsgServidor, ctx: Cont
       const novo = c.noReal(msg.no, posicao);
       const nos = [
         ...prev.nos.filter((n) => n.id !== msg.no.id),
-        { ...novo, width: existente?.width, height: existente?.height },
+        preservarDimensoes(novo, existente),
       ];
       return { ...prev, nos: reconciliarFantasmas(nos, prev.arestas, c.noFantasma) };
     }
@@ -103,7 +108,7 @@ export function aplicarDiffRender(prev: RenderState, msg: MsgServidor, ctx: Cont
         ...prev,
         nos: [
           ...prev.nos.filter((n) => n.id !== msg.nota.id),
-          { ...c.nota(msg.nota), selected: antes?.selected },
+          { ...preservarDimensoes(c.nota(msg.nota), antes), selected: antes?.selected },
         ],
       };
     }
