@@ -87,7 +87,7 @@ function Componente({ id, data, selected, width, height }: NodeProps) {
         ))}
         <svg width={largura} height={altura} style={{ position: "absolute", inset: 0 }}>
           {tracos.map((t, i) => (
-            <path key={i} d={t.d} stroke={t.stroke} fill={t.fill} strokeWidth={t.strokeWidth} />
+            <path key={i} d={t.d} stroke={t.stroke} fill={t.fill} strokeWidth={t.strokeWidth} strokeDasharray={t.strokeLineDash?.join(" ")} />
           ))}
         </svg>
       </div>

@@ -16,7 +16,8 @@ import {
   type NodeChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import type { MsgServidor, Nota, Papel, Posicao, Projeto, Usuario } from "../../core/tipos.ts";
+import { congelarRecorte } from "../../core/exportacao.ts";
+import type { MsgServidor, Nota, Papel, Posicao, Projeto, RecorteExportacao, Retangulo, Usuario } from "../../core/tipos.ts";
 import { apiProjeto, type ArestaComId } from "./api.ts";
 import { conectarWS, type ConexaoWS } from "./ws.ts";
 import { aplicarDiffRender, preservarDimensoes, type RenderState } from "./diffGrafo.ts";
@@ -28,6 +29,7 @@ import { BarraLateral, type Armado, type ItemGrafo } from "./BarraLateral.tsx";
 import { MenuProjeto } from "./MenuProjeto.tsx";
 import { completarLayout } from "./layoutAuto.ts";
 import { tamanhoDe } from "./rough.ts";
+import { MenuExportar, type CapturaExportacao } from "./MenuExportar.tsx";
 import { PALETA, TemaProvider, gravarPreferencia, lerPreferencia, type Preferencia, type Tema } from "./tema.ts";
 import { Modal } from "./Modal.tsx";
 import { ModalAresta } from "./ModalAresta.tsx";
@@ -84,6 +86,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     null,
   );
   const [falha, setFalha] = useState<string | null>(null);
+  const [exportarAberto, setExportarAberto] = useState(false);
   const [dialogo, setDialogo] = useState<
     | { tipo: "confirmacao"; mensagem: string; resolver: (ok: boolean) => void }
     | { tipo: "texto"; mensagem: string; resolver: (valor: string | null) => void }
@@ -283,6 +286,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
         setArestaAberta(null);
         setRoda(null);
         setArmado(null);
+        setExportarAberto(false);
         return;
       }
       const alvo = e.target as HTMLElement | null;
@@ -610,6 +614,62 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   const rotuloTema = { sistema: "🖥️", claro: "☀️", escuro: "🌙" };
   const outros = presenca.filter((p) => p.id !== meuId);
 
+  function dimensaoDoNo(no: Node): { largura: number; altura: number } {
+    const largura = no.width ?? no.measured?.width;
+    const altura = no.height ?? no.measured?.height;
+    if (largura && altura) return { largura, altura };
+    if (no.type === "nota") return { largura: 176, altura: 64 };
+    const tamanho = tamanhoDe((no.data as DadosNo).forma);
+    return { largura: tamanho.largura, altura: tamanho.altura };
+  }
+
+  /** A viewport e os resize locais são copiados junto com os ids, antes do GET do snapshot. */
+  function capturarExportacao(escopo: "projeto" | "selecao-area"): CapturaExportacao {
+    const itens = render.nos.filter((no) => no.type === "nota" || !(no.data as DadosNo).fantasma);
+    const limites: { nos: Record<string, Retangulo>; notas: Record<string, Retangulo> } = { nos: {}, notas: {} };
+    const dimensoesLocais: CapturaExportacao["dimensoesLocais"] = {};
+    for (const no of itens) {
+      const dimensao = dimensaoDoNo(no);
+      const limite = { x: no.position.x, y: no.position.y, ...dimensao };
+      dimensoesLocais[no.id] = dimensao;
+      if (no.type === "nota") limites.notas[no.id] = limite;
+      else limites.nos[no.id] = limite;
+    }
+    const elemento = document.querySelector<HTMLElement>(".canvas-grafo");
+    const caixa = elemento?.getBoundingClientRect();
+    const inicio = caixa && rf.current ? rf.current.screenToFlowPosition({ x: caixa.left, y: caixa.top }) : { x: 0, y: 0 };
+    const fim = caixa && rf.current ? rf.current.screenToFlowPosition({ x: caixa.right, y: caixa.bottom }) : { x: 0, y: 0 };
+    const area = { x: inicio.x, y: inicio.y, largura: Math.max(0, fim.x - inicio.x), altura: Math.max(0, fim.y - inicio.y) };
+    const nosSelecionados = itens.filter((no) => no.selected && no.type !== "nota");
+    const notasSelecionadas = itens.filter((no) => no.selected && no.type === "nota");
+    const haSelecao = nosSelecionados.length + notasSelecionadas.length > 0;
+    const recorte: RecorteExportacao = escopo === "projeto"
+      ? { tipo: "projeto" }
+      : haSelecao
+        ? { tipo: "selecao", nos: nosSelecionados.map((no) => no.id), notas: notasSelecionadas.map((no) => no.id), area }
+        : { tipo: "area", area, limites };
+    const dentro = (limite: Retangulo) => limite.x <= area.x + area.largura && limite.x + limite.largura >= area.x && limite.y <= area.y + area.altura && limite.y + limite.altura >= area.y;
+    const nosDoRecorte = recorte.tipo === "projeto"
+      ? itens.filter((no) => no.type !== "nota")
+      : recorte.tipo === "selecao"
+        ? itens.filter((no) => no.type !== "nota" && recorte.nos.includes(no.id))
+        : itens.filter((no) => no.type !== "nota" && dentro(limites.nos[no.id]));
+    const notasDoRecorte = recorte.tipo === "projeto"
+      ? itens.filter((no) => no.type === "nota")
+      : recorte.tipo === "selecao"
+        ? itens.filter((no) => no.type === "nota" && recorte.notas.includes(no.id))
+        : itens.filter((no) => no.type === "nota" && dentro(limites.notas[no.id]));
+    const ids = new Set(nosDoRecorte.map((no) => no.id));
+    const contagens = {
+      nos: nosDoRecorte.length,
+      notas: notasDoRecorte.length,
+      arestas: recorte.tipo === "projeto" ? render.arestas.length : render.arestas.filter((aresta) => ids.has(aresta.source) && ids.has(aresta.target)).length,
+    };
+    return { recorte: congelarRecorte(recorte), dimensoesLocais, haConteudo: contagens.nos + contagens.notas > 0, haSelecao, contagens };
+  }
+
+  const haSelecaoAtual = render.nos.some((no) => no.selected && (no.type === "nota" || !(no.data as DadosNo).fantasma));
+
   return (
     <TemaProvider value={tema}>
       <div className={`tela${armado ? " armado" : ""}`}>
@@ -621,6 +681,19 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             aoTrocar={aoTrocarProjeto}
             aoNovoProjeto={aoVoltar}
             aoSairDaConta={aoSairDaConta}
+          />
+          <nav className="navegacao-canvas" aria-label="áreas do canvas">
+            <span className="aba-atual">Canvas</span>
+            <button type="button" disabled title="Diagramas em breve">Diagramas <small>em breve</small></button>
+            <button type="button" disabled title="Apresentar em breve">Apresentar <small>em breve</small></button>
+          </nav>
+          <MenuExportar
+            aberto={exportarAberto}
+            aoMudarAberto={setExportarAberto}
+            capturar={capturarExportacao}
+            haSelecaoAtual={haSelecaoAtual}
+            carregarSnapshot={api.exportacao}
+            tema={tema}
           />
           {somenteLeitura ? <span className="selo">somente leitura</span> : null}
 
@@ -706,6 +779,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
           />
 
           <ReactFlow
+            className="canvas-grafo"
             aria-label={`grafo de processo: ${titulo || "carregando"}`}
             colorMode={tema === "escuro" ? "dark" : "light"}
             nodes={render.nos}
@@ -731,14 +805,17 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             zoomOnScroll={false}
             zoomOnPinch
             onNodeClick={(_, no) => {
+              setExportarAberto(false);
               if (no.type === "nota") return;
               setAberto((no.data as DadosNo).fantasma ? null : no.id);
             }}
             onEdgeClick={(_, e) => {
+              setExportarAberto(false);
               const d = e.data as DadosAresta | undefined;
               if (d?.aresta) setArestaAberta(d.aresta);
             }}
             onPaneClick={(e) => {
+              setExportarAberto(false);
               if (armado && rf.current) {
                 const alvo = rf.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
                 const alvoArmado = armado;

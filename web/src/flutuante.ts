@@ -1,5 +1,7 @@
 import { Position, type InternalNode, type Node } from "@xyflow/react";
 
+export type CaixaAresta = { x: number; y: number; largura: number; altura: number };
+
 /**
  * Aresta flutuante: em vez de nascer sempre embaixo e morrer sempre em cima, ela sai do
  * lado do nó que aponta para o destino. O ponto é a interseção da reta entre os dois
@@ -8,15 +10,15 @@ import { Position, type InternalNode, type Node } from "@xyflow/react";
  * A caixa é o retângulo do nó, não o contorno desenhado: no losango e no ator a seta
  * encosta um pouco fora do traço. Aceito, o alternativo é interseção por forma.
  */
-function intersecao(no: InternalNode<Node>, alvo: InternalNode<Node>): { x: number; y: number } {
-  const l = no.measured.width ?? 0;
-  const a = no.measured.height ?? 0;
+function intersecao(no: CaixaAresta, alvo: CaixaAresta): { x: number; y: number } {
+  const l = no.largura;
+  const a = no.altura;
   const l2 = l / 2;
   const a2 = a / 2;
-  const x2 = no.internals.positionAbsolute.x + l2;
-  const y2 = no.internals.positionAbsolute.y + a2;
-  const x1 = alvo.internals.positionAbsolute.x + (alvo.measured.width ?? 0) / 2;
-  const y1 = alvo.internals.positionAbsolute.y + (alvo.measured.height ?? 0) / 2;
+  const x2 = no.x + l2;
+  const y2 = no.y + a2;
+  const x1 = alvo.x + alvo.largura / 2;
+  const y1 = alvo.y + alvo.altura / 2;
 
   if (l2 === 0 || a2 === 0) return { x: x2, y: y2 };
 
@@ -29,10 +31,10 @@ function intersecao(no: InternalNode<Node>, alvo: InternalNode<Node>): { x: numb
 }
 
 /** De que lado da caixa o ponto caiu — define a curvatura da bezier. */
-function ladoDoPonto(no: InternalNode<Node>, ponto: { x: number; y: number }): Position {
-  const { x, y } = no.internals.positionAbsolute;
-  const l = no.measured.width ?? 0;
-  const a = no.measured.height ?? 0;
+function ladoDoPonto(no: CaixaAresta, ponto: { x: number; y: number }): Position {
+  const { x, y } = no;
+  const l = no.largura;
+  const a = no.altura;
   const px = Math.round(ponto.x);
   const py = Math.round(ponto.y);
 
@@ -51,10 +53,8 @@ export type Pontas = {
   ladoDestino: Position;
 };
 
-export function pontasDaAresta(
-  origem: InternalNode<Node>,
-  destino: InternalNode<Node>,
-): Pontas {
+/** Variante pura da geometria flutuante, usada também pela réplica de exportação. */
+export function pontasDaCaixa(origem: CaixaAresta, destino: CaixaAresta): Pontas {
   const o = intersecao(origem, destino);
   const d = intersecao(destino, origem);
   return {
@@ -65,4 +65,17 @@ export function pontasDaAresta(
     ladoOrigem: ladoDoPonto(origem, o),
     ladoDestino: ladoDoPonto(destino, d),
   };
+}
+
+export function pontasDaAresta(
+  origem: InternalNode<Node>,
+  destino: InternalNode<Node>,
+): Pontas {
+  const caixa = (no: InternalNode<Node>): CaixaAresta => ({
+    x: no.internals.positionAbsolute.x,
+    y: no.internals.positionAbsolute.y,
+    largura: no.measured.width ?? 0,
+    altura: no.measured.height ?? 0,
+  });
+  return pontasDaCaixa(caixa(origem), caixa(destino));
 }

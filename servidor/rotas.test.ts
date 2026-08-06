@@ -89,6 +89,35 @@ test("projeto: quem não é membro recebe 404, não 403", async () => {
   }
 });
 
+test("GET /exportacao permite leitor, protege não membro e devolve corpo e posição", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const dono = await registrar(base);
+    const projetoId = await criarProjetoDeTeste(dono.cliente);
+    const { id } = await (await dono.cliente.post(`/api/projetos/${projetoId}/nos`, { titulo: "Contexto" })).json();
+    await dono.cliente.put(`/api/projetos/${projetoId}/nos/${id}/corpo`, { corpo: "evidência da reunião", versao: 1 });
+    const pool = criarPool();
+    await pool.query("update nos set pos_x = 12, pos_y = 34 where projeto_id = $1 and id = $2", [projetoId, id]);
+
+    const leitor = await registrar(base, "leitor-exportacao");
+    await pool.query("insert into projeto_membros (projeto_id, usuario_id, papel) values ($1, $2, 'leitor')", [projetoId, leitor.usuarioId]);
+    const snapshot = await leitor.cliente.get(`/api/projetos/${projetoId}/exportacao`);
+    await pool.end();
+
+    assert.equal(snapshot.status, 200);
+    const dados = await snapshot.json();
+    assert.equal(dados.versao, 1);
+    assert.equal(dados.projeto.id, projetoId);
+    assert.equal(dados.nos[0].corpo, "evidência da reunião");
+    assert.deepEqual(dados.nos[0].posicao, { x: 12, y: 34 });
+
+    const outro = await registrar(base, "nao-membro-exportacao");
+    assert.equal((await outro.cliente.get(`/api/projetos/${projetoId}/exportacao`)).status, 404);
+  } finally {
+    await fechar();
+  }
+});
+
 test("POST /projetos cria membership dono; GET /projetos lista com o papel", async () => {
   const { base, fechar } = await subirServidor();
   try {

@@ -4,6 +4,7 @@ import type {
   CategoriaComId,
   CategoriaResumo,
   EstiloAresta,
+  ExportacaoSnapshot,
   Layout,
   No,
   Nota,
@@ -102,6 +103,7 @@ export function apiProjeto(projetoId: string) {
   const base = `/api/projetos/${encodeURIComponent(projetoId)}`;
   return {
     grafo: () => pedir<GrafoResposta>(`${base}/grafo`),
+    exportacao: () => pedir<ExportacaoSnapshot>(`${base}/exportacao`),
     no: (id: string) => pedir<NoDetalhe>(`${base}/nos/${encodeURIComponent(id)}`),
     criarNo: (titulo: string, categoriaId: string, campos?: Record<string, unknown>) =>
       pedir<{ id: string }>(`${base}/nos`, {

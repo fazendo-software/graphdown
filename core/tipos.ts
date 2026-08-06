@@ -76,6 +76,39 @@ export type Projeto = { id: string; nome: string; papel: Papel };
 export type Usuario = { id: string; nome: string; email: string };
 export type Nota = { id: string; conteudo: string; x: number; y: number };
 
+/** Retângulo em coordenadas do canvas, usado pelo recorte de exportação. */
+export type Retangulo = { x: number; y: number; largura: number; altura: number };
+
+export type NoExportacao = No & { corpo: string; posicao?: Posicao };
+
+/**
+ * Contrato interno do exportador. A API entrega a verdade semântica; cada formato a
+ * transforma localmente sem voltar a consultar o projeto.
+ */
+export type ExportacaoSnapshot = {
+  versao: 1;
+  exportadoEm: string;
+  projeto: { id: string; titulo: string };
+  categorias: CategoriaComId[];
+  camposAresta: CampoCategoria[];
+  estilosAresta: Record<string, EstiloAresta>;
+  nos: NoExportacao[];
+  notas: Nota[];
+  arestas: Array<Aresta & { id: string }>;
+  fantasmas: string[];
+};
+
+/** Recorte congelado pelo cliente antes de pedir o snapshot ao servidor. */
+export type RecorteExportacao =
+  | { tipo: "projeto" }
+  | { tipo: "selecao"; nos: string[]; notas: string[]; area: Retangulo }
+  | {
+      tipo: "area";
+      area: Retangulo;
+      /** Geometria da tela congelada junto com a viewport; inclui resize ainda local. */
+      limites: { nos: Record<string, Retangulo>; notas: Record<string, Retangulo> };
+    };
+
 /** Uma linha do resultado de `GET /busca`. `trecho` já vem destacado pelo ts_headline. */
 export type ResultadoBusca = { id: string; titulo: string; trecho: string };
 

@@ -10,7 +10,7 @@ export function seedDoId(id: string): number {
   return Math.abs(h) % 2 ** 31;
 }
 
-export type Traco = { d: string; stroke: string; fill: string; strokeWidth: number };
+export type Traco = { d: string; stroke: string; fill: string; strokeWidth: number; strokeLineDash?: number[] };
 export type Tamanho = { largura: number; altura: number };
 /** Espaço reservado para o rótulo que fica abaixo do desenho do objeto. */
 export const ALTURA_ROTULO = 30;
@@ -349,5 +349,5 @@ export function desenharForma(forma: string, opcoes: Options, tamanho?: Tamanho)
 }
 
 export function caminho(d: string, opcoes: Options): Traco[] {
-  return paraTracos(gerador.path(d, opcoes));
+  return paraTracos(gerador.path(d, opcoes)).map((traco) => ({ ...traco, strokeLineDash: opcoes.strokeLineDash }));
 }

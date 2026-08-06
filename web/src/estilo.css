@@ -93,6 +93,33 @@ body { margin: 0; background: var(--fundo); color: var(--texto); }
   display: flex; gap: 10px; align-items: center; padding: 0 10px;
   background: var(--fundo-2); border-bottom: 1px solid var(--borda-2);
 }
+.navegacao-canvas { display: flex; align-items: center; gap: 2px; }
+.navegacao-canvas .aba-atual, .navegacao-canvas button, .menu-exportar > .menu-alvo {
+  padding: 5px 8px; border: 1px solid transparent; border-radius: 6px;
+  background: none; color: var(--texto-2); font: inherit; font-size: 12px; white-space: nowrap;
+}
+.navegacao-canvas .aba-atual, .menu-exportar > .menu-alvo[aria-expanded="true"] { background: var(--fundo-3); color: var(--acento); font-weight: 600; }
+.navegacao-canvas button:disabled { color: var(--texto-4); cursor: not-allowed; }
+.navegacao-canvas small { margin-left: 2px; font-size: 10px; }
+.menu-exportar { position: relative; }
+.menu-exportar > .menu-alvo { cursor: pointer; }
+.menu-exportar > .menu-alvo:hover { border-color: var(--borda); background: var(--fundo); }
+.menu-exportar-caixa { left: 0; width: 310px; }
+.menu-exportar-intro { margin: 5px 7px 8px; color: var(--texto-2); font-size: 12px; line-height: 1.35; }
+.opcao-exportar {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%;
+  padding: 9px 8px; border: 0; border-radius: 6px; background: none; color: var(--texto);
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.opcao-exportar:hover:not(:disabled) { background: var(--fundo-3); }
+.opcao-exportar span { color: var(--texto-3); font-size: 11px; }
+.opcao-exportar:disabled { color: var(--texto-3); cursor: progress; }
+.voltar-exportar { margin: 1px 2px 4px; padding: 4px 6px; border: 0; background: none; color: var(--acento); font: inherit; font-size: 12px; cursor: pointer; }
+.estado-exportar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 2px 2px; padding: 7px; border-radius: 6px; font-size: 12px; }
+.estado-exportar.progresso { background: var(--fundo-3); color: var(--texto-2); }
+.estado-exportar.pronto { background: color-mix(in srgb, var(--acento) 12%, var(--fundo)); color: var(--texto-2); }
+.estado-exportar.erro { background: color-mix(in srgb, var(--perigo) 12%, var(--fundo)); color: var(--perigo); }
+.estado-exportar button { padding: 4px 6px; border: 1px solid currentColor; border-radius: 5px; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; }
 .topo .empurra { flex: 1; }
 
 /* Foco sempre visível: navegar por teclado tem que dar pra ver onde se está. */

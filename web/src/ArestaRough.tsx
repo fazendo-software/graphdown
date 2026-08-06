@@ -89,7 +89,7 @@ function Componente({
         <BaseEdge
           key={i}
           path={t.d}
-          style={{ stroke: cor, strokeWidth: 1.4 }}
+          style={{ stroke: cor, strokeWidth: 1.4, strokeDasharray: t.strokeLineDash?.join(" ") }}
           markerEnd={i === 0 ? markerEnd : undefined}
           markerStart={i === 0 ? markerStart : undefined}
         />

@@ -19,6 +19,7 @@ import { resolverMembership } from "./membros.ts";
 import { listarCategorias, buscarCategoriaPorId, categoriaDoProjeto } from "./categorias.ts";
 import { apagarProjeto, buscarProjeto, criarProjeto, listarProjetos } from "./projetos.ts";
 import { montarGrafo } from "./grafo.ts";
+import { montarExportacao } from "./exportacao.ts";
 import { apagarNo, atualizarCampos, atualizarCorpo, atualizarTitulo, buscarNo, buscarNos, criarNo } from "./nos.ts";
 import { apagarAresta, atualizarAresta, criarAresta } from "./arestas.ts";
 import { apagarNota, atualizarNota, criarNota, listarNotas, type PatchNota } from "./notas.ts";
@@ -175,6 +176,17 @@ async function lidar(req: IncomingMessage, res: ServerResponse, pool: Pool, sala
     if (!ctx) return;
     const grafo = await montarGrafo(pool, projetoId);
     return json(res, 200, grafo);
+  }
+
+  const mExportacao = rota.match(/^\/api\/projetos\/([^/]+)\/exportacao$/);
+  if (mExportacao && metodo === "GET") {
+    const projetoId = mExportacao[1];
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    const snapshot = await montarExportacao(pool, projetoId);
+    // O projeto pode ter sido apagado entre a guarda e o BEGIN; continua sem revelar nada.
+    if (!snapshot) return json(res, 404, { erro: "projeto não encontrado" });
+    return json(res, 200, snapshot);
   }
 
   const mBusca = rota.match(/^\/api\/projetos\/([^/]+)\/busca$/);
