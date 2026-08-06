@@ -11,8 +11,9 @@ import { pontasDaAresta } from "./flutuante.ts";
 import { useCores } from "./tema.ts";
 import type { EstiloAresta } from "../../core/tipos.ts";
 
-/** Sem `cor`: quem não declarou cor na categoria segue o tema. */
-export const ARESTA_PADRAO: Omit<Required<EstiloAresta>, "cor"> = {
+/** Sem `cor`: quem não declarou cor na categoria segue o tema. `grupo` é rótulo de UI e não
+ * tem padrão — seta sem grupo cai na seção "outras" da paleta. */
+export const ARESTA_PADRAO: Omit<Required<EstiloAresta>, "cor" | "grupo"> = {
   estilo: "continua",
   ponta: "cheia",
 };

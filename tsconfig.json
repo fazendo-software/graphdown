@@ -10,5 +10,5 @@
     "types": ["node"],
     "verbatimModuleSyntax": true
   },
-  "include": ["core", "servidor", "web/vite.config.ts"]
+  "include": ["core", "servidor", "migracoes", "web/vite.config.ts"]
 }

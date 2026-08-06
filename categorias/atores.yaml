@@ -1,0 +1,23 @@
+nome: Atores
+# Quem executa, nao o que e executado. `ator` saiu de processo.yaml e mora aqui - o seed
+# religa os nos existentes com tipo=ator para esta categoria.
+campos:
+  - { chave: tipo, tipo: enum, opcoes: [ator, equipe, terceiro, papel, sistema, conector] }
+  - { chave: area, tipo: texto } # financeiro, juridico, fornecedor
+  - { chave: status, tipo: enum, opcoes: [rascunho, ativo, bloqueado, concluido] }
+
+forma_por: tipo
+formas:
+  ator: ator
+  equipe: equipe # varias pessoas, nao uma
+  terceiro: nuvem # fora do nosso limite organizacional
+  papel: circulo # funcao, nao pessoa
+  sistema: sistema
+  conector: circulo
+
+cor_por: status
+cores:
+  rascunho: "#9ca3af"
+  ativo: "#7c3aed"
+  bloqueado: "#dc2626"
+  concluido: "#16a34a"

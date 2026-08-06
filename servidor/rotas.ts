@@ -1,22 +1,29 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
-import { join, extname, dirname, resolve, sep } from "node:path";
+import { extname, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse as parseYaml } from "yaml";
-import { construirGrafo } from "../core/grafo.ts";
-import { parseNota, editarCampo, editarCorpo } from "../core/parse.ts";
-import { parseCategoria, templateNo, idDeTitulo } from "../core/categoria.ts";
-import type { Layout } from "../core/tipos.ts";
+import type { Pool } from "pg";
+import type { Papel } from "../core/tipos.ts";
 import {
-  caminhoNo,
-  escrever,
-  gravarLayout,
-  idValido,
-  lerLayout,
-  lerPasta,
-  paraLixeira,
-} from "./arquivos.ts";
-import { assinarEventos } from "./watcher.ts";
+  apagarSessao,
+  criarSessao,
+  hashSenha,
+  lerCookie,
+  loginLimitado,
+  resolverSessao,
+  serializarCookieLimpo,
+  serializarCookieSessao,
+  verificarSenha,
+} from "./auth.ts";
+import { resolverMembership } from "./membros.ts";
+import { listarCategorias, buscarCategoriaPorId, categoriaDoProjeto } from "./categorias.ts";
+import { apagarProjeto, buscarProjeto, criarProjeto, listarProjetos } from "./projetos.ts";
+import { montarGrafo } from "./grafo.ts";
+import { apagarNo, atualizarCampos, atualizarCorpo, buscarNo, buscarNos, criarNo } from "./nos.ts";
+import { apagarAresta, atualizarAresta, criarAresta } from "./arestas.ts";
+import { apagarNota, atualizarNota, criarNota, listarNotas, type PatchNota } from "./notas.ts";
+import { corpoJson, ErroPayloadGrande, origemPermitida } from "./seguranca.ts";
+import type { SalaProjetos } from "./ws.ts";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
 const WEB = join(RAIZ, "web", "dist");
@@ -28,39 +35,15 @@ const MIME: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
-function json(res: ServerResponse, status: number, corpo: unknown): void {
+const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function json(res: ServerResponse, status: number, corpo: unknown, cookie?: string): void {
   const texto = JSON.stringify(corpo);
-  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  const cabecalhos: Record<string, string> = { "content-type": "application/json; charset=utf-8" };
+  if (cookie) cabecalhos["set-cookie"] = cookie;
+  res.writeHead(status, cabecalhos);
   res.end(texto);
-}
-
-async function corpoJson(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const pedacos: Buffer[] = [];
-  for await (const p of req) pedacos.push(p as Buffer);
-  if (pedacos.length === 0) return {};
-  return JSON.parse(Buffer.concat(pedacos).toString("utf8")) as Record<string, unknown>;
-}
-
-async function lerMeta(dir: string): Promise<{ titulo: string; categoria: string }> {
-  try {
-    const cru = (parseYaml(await readFile(join(dir, "_grafo.yaml"), "utf8")) ?? {}) as {
-      titulo?: string;
-      categoria?: string;
-    };
-    return { titulo: cru.titulo ?? "Sem título", categoria: cru.categoria ?? "processo" };
-  } catch {
-    return { titulo: "Sem título", categoria: "processo" };
-  }
-}
-
-async function lerCategoria(nome: string) {
-  // `nome` vem do _grafo.yaml, que pode ter sido escrito por outra pessoa no repo clonado.
-  if (!idValido(nome)) return parseCategoria("");
-  try {
-    return parseCategoria(await readFile(join(RAIZ, "categorias", `${nome}.yaml`), "utf8"));
-  } catch {
-    return parseCategoria("");
-  }
 }
 
 async function servirEstatico(res: ServerResponse, caminhoBruto: string): Promise<void> {
@@ -72,8 +55,7 @@ async function servirEstatico(res: ServerResponse, caminhoBruto: string): Promis
     return;
   }
   const candidato = resolve(WEB, `.${alvo}`);
-  // ponytail: mesma guarda que idValido dá aos nós, aqui pra o bundle estático — nunca
-  // deixa o caminho escapar de web/dist.
+  // guarda contra path traversal: nunca deixa o caminho escapar de web/dist.
   if (candidato !== WEB && !candidato.startsWith(WEB + sep)) {
     res.writeHead(400).end("caminho inválido");
     return;
@@ -92,122 +74,350 @@ async function servirEstatico(res: ServerResponse, caminhoBruto: string): Promis
   }
 }
 
-export function criarServidor(dir: string): Server {
+type Contexto = { usuarioId: string; nome: string; papel: Papel };
+
+/** Sessão válida **e** membership no projeto — sem membership devolve 404, nunca 403. */
+async function exigirProjeto(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pool: Pool,
+  projetoId: string,
+): Promise<Contexto | null> {
+  if (!RE_UUID.test(projetoId)) {
+    json(res, 404, { erro: "projeto não encontrado" });
+    return null;
+  }
+  const sessao = await resolverSessao(pool, req);
+  if (!sessao) {
+    json(res, 401, { erro: "não autenticado" });
+    return null;
+  }
+  const papel = await resolverMembership(pool, sessao.usuario.id, projetoId);
+  if (!papel) {
+    json(res, 404, { erro: "projeto não encontrado" });
+    return null;
+  }
+  return { usuarioId: sessao.usuario.id, nome: sessao.usuario.nome, papel };
+}
+
+function exigirEscrita(res: ServerResponse, papel: Papel): boolean {
+  if (papel === "leitor") {
+    json(res, 403, { erro: "leitor não pode escrever" });
+    return false;
+  }
+  return true;
+}
+
+export function criarServidor(pool: Pool, sala: SalaProjetos): Server {
   return createServer(async (req, res) => {
-    const url = new URL(req.url ?? "/", "http://local");
-    // Cru, não decodificado: decodificar aqui faria %2F virar / e o traversal escaparia
-    // do regex de rota abaixo (que trata / como separador de segmento). Cada rota decodifica
-    // só o pedaço que precisa, depois de já ter sido isolado pelo regex.
-    const rota = url.pathname;
-    const metodo = req.method ?? "GET";
-
     try {
-      if (!rota.startsWith("/api/")) return await servirEstatico(res, rota);
-
-      if (rota === "/api/eventos") return assinarEventos(res);
-
-      if (rota === "/api/grafo" && metodo === "GET") {
-        const meta = await lerMeta(dir);
-        const grafo = construirGrafo(await lerPasta(dir));
-        return json(res, 200, {
-          titulo: meta.titulo,
-          categoria: await lerCategoria(meta.categoria),
-          nos: grafo.nos,
-          arestas: grafo.arestas,
-          fantasmas: grafo.fantasmas,
-          layout: await lerLayout(dir),
-        });
-      }
-
-      if (rota === "/api/layout" && metodo === "PUT") {
-        const corpo = await corpoJson(req);
-        await gravarLayout(dir, corpo as unknown as Layout);
-        return json(res, 200, { ok: true });
-      }
-
-      if (rota === "/api/no" && metodo === "POST") {
-        const { titulo, campos } = (await corpoJson(req)) as {
-          titulo?: string;
-          campos?: Record<string, unknown>;
-        };
-        if (!titulo) return json(res, 400, { erro: "titulo obrigatório" });
-        const meta = await lerMeta(dir);
-        const categoria = await lerCategoria(meta.categoria);
-        const existentes = new Set((await lerPasta(dir)).map((a) => a.id));
-        const base = idDeTitulo(titulo);
-        let id = base;
-        for (let n = 2; existentes.has(id); n++) id = `${base}-${n}`;
-        // `campos` sobrescreve o template. Sem isso, criar um losango pela paleta seria
-        // POST seguido de PATCH imediato — duas escritas no mesmo arquivo recem-criado.
-        let texto = templateNo(categoria, titulo);
-        if (campos && typeof campos === "object" && !Array.isArray(campos)) {
-          for (const [chave, valor] of Object.entries(campos)) {
-            texto = editarCampo(texto, chave, valor);
-          }
-        }
-        await escrever(caminhoNo(dir, id), texto);
-        return json(res, 201, { id });
-      }
-
-      const mNo = rota.match(/^\/api\/no\/([^/]+)(\/corpo)?$/);
-      if (mNo) {
-        let id: string;
-        try {
-          id = decodeURIComponent(mNo[1]);
-        } catch {
-          return json(res, 400, { erro: "id inválido" });
-        }
-        const ehCorpo = Boolean(mNo[2]);
-        if (!idValido(id)) return json(res, 400, { erro: "id inválido" });
-
-        if (metodo === "GET" && !ehCorpo) {
-          const texto = await readFile(caminhoNo(dir, id), "utf8");
-          const { doc, corpo, erro } = parseNota(texto);
-          return json(res, 200, {
-            id,
-            campos: erro ? {} : (doc.toJS() ?? {}),
-            corpo,
-            erro,
-          });
-        }
-
-        if (metodo === "PATCH" && !ehCorpo) {
-          const { campos } = (await corpoJson(req)) as { campos?: Record<string, unknown> };
-          if (!campos) return json(res, 400, { erro: "campos obrigatório" });
-          let texto = await readFile(caminhoNo(dir, id), "utf8");
-          for (const [chave, valor] of Object.entries(campos)) {
-            texto = editarCampo(texto, chave, valor);
-          }
-          await escrever(caminhoNo(dir, id), texto);
-          return json(res, 200, { ok: true });
-        }
-
-        if (metodo === "PUT" && ehCorpo) {
-          const { corpo } = (await corpoJson(req)) as { corpo?: string };
-          if (typeof corpo !== "string") return json(res, 400, { erro: "corpo obrigatório" });
-          const texto = await readFile(caminhoNo(dir, id), "utf8");
-          await escrever(caminhoNo(dir, id), editarCorpo(texto, corpo));
-          return json(res, 200, { ok: true });
-        }
-
-        if (metodo === "DELETE" && !ehCorpo) {
-          await paraLixeira(dir, id);
-          return json(res, 200, { ok: true });
-        }
-      }
-
-      return json(res, 404, { erro: "rota não encontrada" });
+      await lidar(req, res, pool, sala);
     } catch (e) {
-      // A mensagem crua do Node traz o caminho absoluto do arquivo e vai parar na barra
-      // de erro do canvas. Traduzimos o que o usuario pode resolver; o resto vira 500 seco.
-      const erro = e as NodeJS.ErrnoException;
-      if (erro.code === "ENOENT") return json(res, 404, { erro: "nó não encontrado" });
-      if (erro instanceof SyntaxError) return json(res, 400, { erro: "JSON inválido" });
-      if (erro.message?.startsWith("frontmatter inválido")) {
-        return json(res, 409, { erro: erro.message });
-      }
-      console.error(erro);
-      return json(res, 500, { erro: "erro interno do servidor" });
+      tratarErro(res, e);
     }
   });
+}
+
+async function lidar(req: IncomingMessage, res: ServerResponse, pool: Pool, sala: SalaProjetos): Promise<void> {
+  const url = new URL(req.url ?? "/", "http://local");
+  const rota = url.pathname;
+  const metodo = req.method ?? "GET";
+
+  if (!rota.startsWith("/api/")) return servirEstatico(res, rota);
+
+  // CSRF: SameSite=Lax cobre navegação de topo, não toda variação — Origin cobre o resto.
+  if (metodo !== "GET" && !origemPermitida(req.headers.origin, req.headers.host)) {
+    return json(res, 403, { erro: "origem não permitida" });
+  }
+
+  if (rota === "/api/auth/registrar" && metodo === "POST") return registrar(req, res, pool);
+  if (rota === "/api/auth/entrar" && metodo === "POST") return entrar(req, res, pool);
+  if (rota === "/api/auth/sair" && metodo === "POST") return sair(req, res, pool, sala);
+  if (rota === "/api/auth/eu" && metodo === "GET") return eu(req, res, pool);
+
+  if (rota === "/api/categorias" && metodo === "GET") {
+    const sessao = await resolverSessao(pool, req);
+    if (!sessao) return json(res, 401, { erro: "não autenticado" });
+    return json(res, 200, await listarCategorias(pool));
+  }
+
+  if (rota === "/api/projetos" && metodo === "GET") {
+    const sessao = await resolverSessao(pool, req);
+    if (!sessao) return json(res, 401, { erro: "não autenticado" });
+    return json(res, 200, await listarProjetos(pool, sessao.usuario.id));
+  }
+
+  if (rota === "/api/projetos" && metodo === "POST") {
+    const sessao = await resolverSessao(pool, req);
+    if (!sessao) return json(res, 401, { erro: "não autenticado" });
+    const { nome, categoria_id } = (await corpoJson(req)) as { nome?: string; categoria_id?: string };
+    if (!nome || !categoria_id) return json(res, 400, { erro: "nome e categoria_id obrigatórios" });
+    const r = await criarProjeto(pool, sessao.usuario.id, nome, categoria_id);
+    if ("erro" in r) return json(res, 400, r);
+    return json(res, 201, r);
+  }
+
+  const mProjeto = rota.match(/^\/api\/projetos\/([^/]+)$/);
+  if (mProjeto && metodo === "DELETE") {
+    const projetoId = mProjeto[1];
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    if (ctx.papel !== "dono") return json(res, 403, { erro: "só o dono apaga o projeto" });
+    await apagarProjeto(pool, projetoId);
+    sala.fecharProjeto(projetoId);
+    return json(res, 200, { ok: true });
+  }
+
+  const mGrafo = rota.match(/^\/api\/projetos\/([^/]+)\/grafo$/);
+  if (mGrafo && metodo === "GET") {
+    const projetoId = mGrafo[1];
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    const grafo = await montarGrafo(pool, projetoId);
+    return json(res, 200, grafo);
+  }
+
+  const mBusca = rota.match(/^\/api\/projetos\/([^/]+)\/busca$/);
+  if (mBusca && metodo === "GET") {
+    const projetoId = mBusca[1];
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    return json(res, 200, await buscarNos(pool, projetoId, url.searchParams.get("q") ?? ""));
+  }
+
+  const mNotas = rota.match(/^\/api\/projetos\/([^/]+)\/notas$/);
+  if (mNotas) {
+    const projetoId = mNotas[1];
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+
+    if (metodo === "GET") return json(res, 200, await listarNotas(pool, projetoId));
+
+    if (metodo === "POST") {
+      if (!exigirEscrita(res, ctx.papel)) return;
+      const { conteudo, x, y } = (await corpoJson(req)) as { conteudo?: string; x?: number; y?: number };
+      if (typeof x !== "number" || typeof y !== "number") return json(res, 400, { erro: "x e y obrigatórios" });
+      const nota = await criarNota(pool, projetoId, ctx.usuarioId, conteudo ?? "", x, y);
+      sala.transmitir(projetoId, { t: "nota-criada", nota });
+      return json(res, 201, nota);
+    }
+  }
+
+  const mNota = rota.match(/^\/api\/projetos\/([^/]+)\/notas\/([^/]+)$/);
+  if (mNota) {
+    const [, projetoId, id] = mNota;
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    if (!exigirEscrita(res, ctx.papel)) return;
+    // Id não-uuid faria o Postgres levantar erro de sintaxe em vez de dar 404.
+    if (!RE_UUID.test(id)) return json(res, 404, { erro: "nota não encontrada" });
+
+    if (metodo === "PATCH") {
+      const nota = await atualizarNota(pool, projetoId, id, (await corpoJson(req)) as PatchNota);
+      if (!nota) return json(res, 404, { erro: "nota não encontrada" });
+      sala.transmitir(projetoId, { t: "nota-mudou", nota });
+      return json(res, 200, nota);
+    }
+
+    if (metodo === "DELETE") {
+      const nota = await apagarNota(pool, projetoId, id);
+      if (!nota) return json(res, 404, { erro: "nota não encontrada" });
+      sala.transmitir(projetoId, { t: "nota-apagada", nota });
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  const mNos = rota.match(/^\/api\/projetos\/([^/]+)\/nos$/);
+  if (mNos && metodo === "POST") {
+    const projetoId = mNos[1];
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    if (!exigirEscrita(res, ctx.papel)) return;
+    const { titulo, campos, categoria_id } = (await corpoJson(req)) as {
+      titulo?: string;
+      campos?: Record<string, unknown>;
+      categoria_id?: string;
+    };
+    if (!titulo) return json(res, 400, { erro: "titulo obrigatório" });
+    const projeto = await buscarProjeto(pool, projetoId);
+    // Sem `categoria_id` explícito cai na principal do projeto — mantém o comportamento de
+    // antes de o projeto passar a misturar categorias.
+    const categoria = await categoriaDoProjeto(pool, projetoId, categoria_id ?? projeto!.categoriaId);
+    if (!categoria) return json(res, 400, { erro: "categoria não pertence a este projeto" });
+    const { id } = await criarNo(pool, projetoId, ctx.usuarioId, titulo, campos, categoria);
+    const no = await buscarNo(pool, projetoId, id);
+    sala.transmitir(projetoId, { t: "no-criado", no: no! });
+    return json(res, 201, { id });
+  }
+
+  const mNoCorpo = rota.match(/^\/api\/projetos\/([^/]+)\/nos\/([^/]+)\/corpo$/);
+  if (mNoCorpo && metodo === "PUT") {
+    const [, projetoId, id] = mNoCorpo;
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    if (!exigirEscrita(res, ctx.papel)) return;
+    const { corpo, versao } = (await corpoJson(req)) as { corpo?: string; versao?: number };
+    if (typeof corpo !== "string" || typeof versao !== "number") {
+      return json(res, 400, { erro: "corpo e versao obrigatórios" });
+    }
+    const r = await atualizarCorpo(pool, projetoId, id, corpo, versao);
+    if (r.status === "nao-encontrado") return json(res, 404, { erro: "nó não encontrado" });
+    if (r.status === "conflito") {
+      return json(res, 409, { erro: "versão divergente", versao: r.versao, corpo: r.corpo });
+    }
+    const no = await buscarNo(pool, projetoId, id);
+    sala.transmitir(projetoId, { t: "no-mudou", no: no! });
+    return json(res, 200, { ok: true, versao: r.versao });
+  }
+
+  const mNo = rota.match(/^\/api\/projetos\/([^/]+)\/nos\/([^/]+)$/);
+  if (mNo) {
+    const [, projetoId, id] = mNo;
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+
+    if (metodo === "GET") {
+      const no = await buscarNo(pool, projetoId, id);
+      if (!no) return json(res, 404, { erro: "nó não encontrado" });
+      return json(res, 200, no);
+    }
+
+    if (metodo === "PATCH") {
+      if (!exigirEscrita(res, ctx.papel)) return;
+      const { campos } = (await corpoJson(req)) as { campos?: Record<string, unknown> };
+      if (!campos) return json(res, 400, { erro: "campos obrigatório" });
+      // Valida contra a categoria DO NÓ, não a do projeto: um projeto mistura várias.
+      const atual = await buscarNo(pool, projetoId, id);
+      if (!atual) return json(res, 404, { erro: "nó não encontrado" });
+      const categoria = await buscarCategoriaPorId(pool, atual.categoria_id);
+      const no = await atualizarCampos(pool, projetoId, id, campos, categoria!);
+      if (!no) return json(res, 404, { erro: "nó não encontrado" });
+      sala.transmitir(projetoId, { t: "no-mudou", no });
+      return json(res, 200, { ok: true });
+    }
+
+    if (metodo === "DELETE") {
+      if (!exigirEscrita(res, ctx.papel)) return;
+      const r = await apagarNo(pool, projetoId, id);
+      if (!r) return json(res, 404, { erro: "nó não encontrado" });
+      for (const aresta of r.arestasApagadas) {
+        sala.transmitir(projetoId, { t: "aresta-apagada", aresta });
+      }
+      sala.transmitir(projetoId, { t: "no-apagado", no: r.no });
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  const mArestas = rota.match(/^\/api\/projetos\/([^/]+)\/arestas$/);
+  if (mArestas && metodo === "POST") {
+    const projetoId = mArestas[1];
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    if (!exigirEscrita(res, ctx.papel)) return;
+    const { de, para, tipo } = (await corpoJson(req)) as { de?: string; para?: string; tipo?: string | null };
+    if (!de || !para) return json(res, 400, { erro: "de e para obrigatórios" });
+    const r = await criarAresta(pool, projetoId, de, para, tipo);
+    if ("conflito" in r) return json(res, 409, { erro: "já existe aresta entre esses nós" });
+    sala.transmitir(projetoId, {
+      t: "aresta-criada",
+      aresta: { id: r.id, de, para, tipo: tipo ?? undefined, campos: {} },
+    });
+    return json(res, 201, { id: r.id });
+  }
+
+  const mAresta = rota.match(/^\/api\/projetos\/([^/]+)\/arestas\/([^/]+)$/);
+  if (mAresta) {
+    const [, projetoId, id] = mAresta;
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    if (!exigirEscrita(res, ctx.papel)) return;
+
+    if (metodo === "PATCH") {
+      const patch = (await corpoJson(req)) as {
+        quando?: string | null;
+        tipo?: string | null;
+        campos?: Record<string, unknown>;
+      };
+      const aresta = await atualizarAresta(pool, projetoId, id, patch);
+      if (!aresta) return json(res, 404, { erro: "aresta não encontrada" });
+      sala.transmitir(projetoId, { t: "aresta-mudou", aresta });
+      return json(res, 200, { ok: true });
+    }
+
+    if (metodo === "DELETE") {
+      const aresta = await apagarAresta(pool, projetoId, id);
+      if (!aresta) return json(res, 404, { erro: "aresta não encontrada" });
+      sala.transmitir(projetoId, { t: "aresta-apagada", aresta });
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  return json(res, 404, { erro: "rota não encontrada" });
+}
+
+async function registrar(req: IncomingMessage, res: ServerResponse, pool: Pool): Promise<void> {
+  const { email, nome, senha } = (await corpoJson(req)) as { email?: string; nome?: string; senha?: string };
+  if (!email || !nome || !senha) return json(res, 400, { erro: "email, nome e senha obrigatórios" });
+  if (!RE_EMAIL.test(email)) return json(res, 400, { erro: "email inválido" });
+  if (senha.length < 8) return json(res, 400, { erro: "senha precisa de ao menos 8 caracteres" });
+
+  const senhaHash = await hashSenha(senha);
+  let usuario: { id: string; nome: string; email: string };
+  try {
+    const r = await pool.query<{ id: string }>(
+      "insert into usuarios (email, nome, senha_hash) values ($1, $2, $3) returning id",
+      [email, nome, senhaHash],
+    );
+    usuario = { id: r.rows[0].id, nome, email };
+  } catch (erro) {
+    if ((erro as { code?: string }).code === "23505") {
+      return json(res, 409, { erro: "email já cadastrado" });
+    }
+    throw erro;
+  }
+  const token = await criarSessao(pool, usuario.id);
+  return json(res, 201, { usuario }, serializarCookieSessao(token));
+}
+
+async function entrar(req: IncomingMessage, res: ServerResponse, pool: Pool): Promise<void> {
+  const { email, senha } = (await corpoJson(req)) as { email?: string; senha?: string };
+  if (!email || !senha) return json(res, 400, { erro: "email e senha obrigatórios" });
+
+  const ip = req.socket.remoteAddress ?? "desconhecido";
+  if (loginLimitado(`${ip}:${email}`)) return json(res, 429, { erro: "muitas tentativas, tente mais tarde" });
+
+  const r = await pool.query<{ id: string; nome: string; senha_hash: string }>(
+    "select id, nome, senha_hash from usuarios where email = $1",
+    [email],
+  );
+  const linha = r.rows[0];
+  // mensagem genérica dos dois lados: não revela se foi o email ou a senha que errou.
+  if (!linha || !(await verificarSenha(senha, linha.senha_hash))) {
+    return json(res, 401, { erro: "credenciais inválidas" });
+  }
+  const token = await criarSessao(pool, linha.id);
+  return json(res, 200, { usuario: { id: linha.id, nome: linha.nome, email } }, serializarCookieSessao(token));
+}
+
+async function sair(req: IncomingMessage, res: ServerResponse, pool: Pool, sala: SalaProjetos): Promise<void> {
+  const sessao = await resolverSessao(pool, req);
+  const token = lerCookie(req.headers.cookie, "sessao");
+  if (sessao && token) {
+    await apagarSessao(pool, token);
+    sala.fecharSessao(sessao.sessaoId);
+  }
+  return json(res, 200, { ok: true }, serializarCookieLimpo());
+}
+
+async function eu(req: IncomingMessage, res: ServerResponse, pool: Pool): Promise<void> {
+  const sessao = await resolverSessao(pool, req);
+  if (!sessao) return json(res, 401, { erro: "não autenticado" });
+  return json(res, 200, { usuario: sessao.usuario });
+}
+
+function tratarErro(res: ServerResponse, e: unknown): void {
+  if (e instanceof ErroPayloadGrande) return json(res, 413, { erro: "corpo muito grande" });
+  if (e instanceof SyntaxError) return json(res, 400, { erro: "JSON inválido" });
+  console.error(e);
+  json(res, 500, { erro: "erro interno do servidor" });
 }

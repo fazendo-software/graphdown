@@ -1,0 +1,23 @@
+nome: Dados
+# Categoria secundaria: um projeto mistura esta com Processo, Atores, Infraestrutura e
+# Riscos. Sem bloco `arestas` nem `campos_aresta` - esses vem da categoria principal.
+campos:
+  - { chave: tipo, tipo: enum, opcoes: [documento, dado, armazenamento, relatorio, fila-dados, externo] }
+  - { chave: formato, tipo: texto } # PDF, planilha, tabela sql
+  - { chave: status, tipo: enum, opcoes: [rascunho, ativo, bloqueado, concluido] }
+
+forma_por: tipo
+formas:
+  documento: documento
+  dado: paralelogramo
+  armazenamento: cilindro
+  relatorio: documentos # pilha: relatorio e varios documentos
+  fila-dados: tambor # cilindro deitado: leitura sequencial
+  externo: nuvem # dado de terceiro, fora do nosso limite
+
+cor_por: status
+cores:
+  rascunho: "#9ca3af"
+  ativo: "#0891b2"
+  bloqueado: "#dc2626"
+  concluido: "#16a34a"

@@ -1,0 +1,25 @@
+nome: Infraestrutura
+# O sistema que executa o processo, nao o processo. Serve para desenhar onde cada passo
+# roda de fato - util quando o mesmo grafo precisa responder "e se este servidor cair".
+campos:
+  - { chave: tipo, tipo: enum, opcoes: [servidor, nuvem, container, fila, api, rede, balanceador] }
+  - { chave: ambiente, tipo: enum, opcoes: [producao, homologacao, desenvolvimento] }
+  - { chave: endereco, tipo: texto } # host, url, arn
+  - { chave: status, tipo: enum, opcoes: [rascunho, ativo, bloqueado, concluido] }
+
+forma_por: tipo
+formas:
+  servidor: rack
+  nuvem: nuvem
+  container: caixa
+  fila: tambor # cilindro deitado: mensageria le em sequencia
+  api: hexagono
+  rede: rede
+  balanceador: losango # roteia, entao herda a forma de decisao de proposito
+
+cor_por: status
+cores:
+  rascunho: "#9ca3af"
+  ativo: "#ea580c"
+  bloqueado: "#dc2626"
+  concluido: "#16a34a"

@@ -1,0 +1,25 @@
+nome: Riscos e Controles
+# Onde o processo quebra e o que o protege. `severidade` e campo proprio porque o `status`
+# compartilhado responde outra pergunta (em que pe esta), nao quanto doi.
+campos:
+  - { chave: tipo, tipo: enum, opcoes: [risco, controle, incidente, ponto-de-falha, auditoria] }
+  - { chave: severidade, tipo: enum, opcoes: [baixa, media, alta, critica] }
+  - { chave: responsavel, tipo: texto }
+  - { chave: status, tipo: enum, opcoes: [rascunho, ativo, bloqueado, concluido] }
+
+forma_por: tipo
+formas:
+  risco: triangulo
+  controle: escudo
+  incidente: octogono
+  ponto-de-falha: circulo
+  auditoria: documento # auditoria termina em documento, entao herda a forma
+
+# Unica categoria que colore por severidade, nao por status: num mapa de risco a pergunta
+# que importa ao bater o olho e "o que dói mais", nao "em que pé está".
+cor_por: severidade
+cores:
+  baixa: "#16a34a"
+  media: "#ca8a04"
+  alta: "#ea580c"
+  critica: "#dc2626"

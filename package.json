@@ -2,7 +2,9 @@
   "name": "grapydown",
   "version": "0.1.0",
   "type": "module",
-  "bin": { "grapydown": "./servidor/index.ts" },
+  "bin": {
+    "grapydown": "./servidor/index.ts"
+  },
   "scripts": {
     "test": "node --experimental-strip-types --test \"core/*.test.ts\" \"servidor/*.test.ts\" \"web/src/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc -p web --noEmit",
@@ -13,18 +15,21 @@
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
     "@xyflow/react": "^12.3.5",
-    "chokidar": "^4.0.1",
     "markdown-it": "^14.1.0",
+    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "roughjs": "^4.6.6",
+    "ws": "^8.21.2",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.9.0",
+    "@types/pg": "^8.20.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"

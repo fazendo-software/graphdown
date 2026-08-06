@@ -1,5 +1,5 @@
-import { parse, stringify } from "yaml";
-import type { Categoria, CampoCategoria } from "./tipos.ts";
+import { parse } from "yaml";
+import type { Categoria, CampoCategoria, EstiloAresta } from "./tipos.ts";
 
 export function parseCategoria(texto: string): Categoria {
   const cru = (parse(texto) ?? {}) as Partial<Categoria>;
@@ -17,13 +17,59 @@ export function parseCategoria(texto: string): Categoria {
   };
 }
 
-export function templateNo(categoria: Categoria, titulo: string): string {
-  const fm: Record<string, unknown> = { titulo };
+/** Valor inicial de `nos.campos` ao criar um nó: enum cai na primeira opção, texto fica vazio. */
+export function camposPadrao(categoria: Categoria): Record<string, unknown> {
+  const campos: Record<string, unknown> = {};
   for (const campo of categoria.campos) {
-    fm[campo.chave] = campo.tipo === "enum" ? (campo.opcoes?.[0] ?? "") : "";
+    campos[campo.chave] = campo.tipo === "enum" ? (campo.opcoes?.[0] ?? "") : "";
   }
-  fm.depende_de = [];
-  return `---\n${stringify(fm).trimEnd()}\n---\n`;
+  return campos;
+}
+
+/** Campo obrigatório vazio ou valor de enum fora de `opcoes`: mesma coluna `erro` de hoje,
+ * não bloqueia salvar, só sinaliza. */
+export function validarCampos(categoria: Categoria, campos: Record<string, unknown>): string | undefined {
+  for (const campo of categoria.campos) {
+    const valor = campos[campo.chave];
+    if (campo.obrigatorio && (valor === undefined || valor === null || valor === "")) {
+      return `campo obrigatório vazio: ${campo.chave}`;
+    }
+    if (campo.tipo === "enum" && campo.opcoes && typeof valor === "string" && valor !== "" && !campo.opcoes.includes(valor)) {
+      return `valor fora das opções de ${campo.chave}: ${valor}`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Estilos de seta e recursos de aresta valem para o projeto inteiro, não por categoria: uma
+ * aresta liga nós de categorias diferentes, então não há "a categoria da aresta".
+ *
+ * A fusão é por chave, com a **primeira** categoria vencendo — a lista chega ordenada com a
+ * principal do projeto na frente, então acrescentar uma categoria secundária nunca muda o
+ * significado de uma seta que já existia.
+ */
+export function fundirArestas(categorias: Categoria[]): Record<string, EstiloAresta> {
+  const fundido: Record<string, EstiloAresta> = {};
+  for (const cat of categorias) {
+    for (const [chave, estilo] of Object.entries(cat.arestas ?? {})) {
+      if (!(chave in fundido)) fundido[chave] = estilo;
+    }
+  }
+  return fundido;
+}
+
+export function fundirCamposAresta(categorias: Categoria[]): CampoCategoria[] {
+  const vistos = new Set<string>();
+  const campos: CampoCategoria[] = [];
+  for (const cat of categorias) {
+    for (const campo of cat.campos_aresta ?? []) {
+      if (vistos.has(campo.chave)) continue;
+      vistos.add(campo.chave);
+      campos.push(campo);
+    }
+  }
+  return campos;
 }
 
 export function idDeTitulo(titulo: string): string {

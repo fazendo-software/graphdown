@@ -8,7 +8,14 @@ export type DadosNo = {
   cor: string;
   forma: string;
   fantasma: boolean;
+  /** Valor de `campos[categoria.forma_por]`. Não usado no desenho — é o que agrupa o
+   * outline da barra lateral, que só enxerga os nós já renderizados. */
+  tipo?: string;
+  /** Nome da categoria do nó, pelo mesmo motivo: agrupar o outline sem consultar o catálogo. */
+  categoria?: string;
   erro?: string;
+  /** Nome de quem está arrastando este nó agora, se for outra pessoa. */
+  movidoPor?: string;
 };
 
 const CENTRADO: CSSProperties = {
@@ -32,7 +39,7 @@ const RECUO_PADRAO: CSSProperties = { padding: "12px 14px" };
 const LADOS = [Position.Top, Position.Right, Position.Bottom, Position.Left];
 
 function Componente({ id, data, selected }: NodeProps) {
-  const { titulo, cor, forma, fantasma, erro } = data as DadosNo;
+  const { titulo, cor, forma, fantasma, erro, movidoPor } = data as DadosNo;
   const seed = useMemo(() => seedDoId(id), [id]);
   const { largura, altura } = tamanhoDe(forma);
   const cores = useCores();
@@ -77,8 +84,11 @@ function Componente({ id, data, selected }: NodeProps) {
       >
         <span>
           <strong>{titulo}</strong>
-          {erro ? <div style={{ fontSize: 11, marginTop: 4 }}>YAML inválido</div> : null}
-          {fantasma ? <div style={{ fontSize: 11, marginTop: 4 }}>arquivo não existe</div> : null}
+          {erro ? <div style={{ fontSize: 11, marginTop: 4 }}>não confere com a categoria</div> : null}
+          {fantasma ? <div style={{ fontSize: 11, marginTop: 4 }}>não existe</div> : null}
+          {movidoPor ? (
+            <div style={{ fontSize: 11, marginTop: 4, color: cor }}>✎ {movidoPor}</div>
+          ) : null}
         </span>
       </div>
     </div>

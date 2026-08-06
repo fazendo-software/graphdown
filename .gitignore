@@ -2,6 +2,7 @@ node_modules/
 web/dist/
 *.tmp
 .grapydown/trash/
+.env
 
 # temporarios do Claude Code
 .claude/settings.local.json.tmp.*

@@ -42,7 +42,12 @@
 }
 
 body { margin: 0; background: var(--fundo); color: var(--texto); }
-#raiz, .tela { width: 100vw; height: 100vh; }
+#raiz { width: 100vw; height: 100vh; }
+/* Casca de editor: faixa de topo fina + (barra lateral | canvas). O canvas deixou de ser
+   a tela inteira com painéis flutuando por cima. */
+.tela { width: 100vw; height: 100vh; display: grid; grid-template-rows: 42px 1fr; }
+.corpo { display: grid; grid-template-columns: 240px 1fr; min-height: 0; }
+.corpo > .react-flow { min-width: 0; }
 
 .modal-fundo {
   position: fixed; inset: 0; background: var(--veu);
@@ -79,21 +84,21 @@ body { margin: 0; background: var(--fundo); color: var(--texto); }
   margin: 20px 0 0; padding-top: 12px; border-top: 1px solid var(--borda-2);
   font-size: 13px; font-weight: 600; color: var(--texto-2);
 }
-.barra {
-  position: absolute; top: 12px; left: 12px; z-index: 5;
-  background: var(--fundo); color: var(--texto); padding: 8px 12px; border-radius: 8px;
-  box-shadow: 0 1px 4px var(--sombra); display: flex; gap: 12px; align-items: center;
+.topo {
+  display: flex; gap: 10px; align-items: center; padding: 0 10px;
+  background: var(--fundo-2); border-bottom: 1px solid var(--borda-2);
 }
+.topo .empurra { flex: 1; }
 
 /* Foco sempre visível: navegar por teclado tem que dar pra ver onde se está. */
 :focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
 
 .modos { display: flex; gap: 2px; }
-.modos button, .barra button.tema {
+.modos button, .topo button.tema {
   padding: 6px 10px; border: 1px solid var(--borda); background: var(--fundo);
   font: inherit; font-size: 12px; color: var(--texto-2); cursor: pointer;
 }
-.barra button.tema { border-radius: 8px; white-space: nowrap; }
+.topo button.tema { border-radius: 8px; white-space: nowrap; }
 .modos button:first-child { border-radius: 8px 0 0 8px; }
 .modos button:last-child { border-radius: 0 8px 8px 0; }
 .modos button[aria-pressed="true"] {
@@ -112,12 +117,13 @@ body { margin: 0; background: var(--fundo); color: var(--texto); }
 .react-flow__node:hover .react-flow__handle.lado,
 .react-flow__node.selected .react-flow__handle.lado { opacity: 1; }
 
-.paleta { display: flex; gap: 4px; }
+/* Paleta virou coluna: mora na barra lateral, não mais na faixa de topo. */
+.paleta { display: flex; flex-direction: column; gap: 2px; }
 .paleta-item {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  display: flex; flex-direction: row; align-items: center; gap: 8px; width: 100%;
   padding: 4px 6px; border: 1px solid transparent; border-radius: 8px;
-  background: none; font: inherit; font-size: 10px; color: var(--texto-2);
-  cursor: grab; user-select: none;
+  background: none; font: inherit; font-size: 12px; color: var(--texto-2);
+  cursor: grab; user-select: none; text-align: left;
 }
 .paleta-item:hover { border-color: var(--borda); background: var(--fundo-2); }
 .paleta-item:active { cursor: grabbing; }
@@ -136,12 +142,188 @@ body { margin: 0; background: var(--fundo); color: var(--texto); }
 /* Dedo não tem hover nem precisão de 9px: alvos crescem e o que dependia de hover
    passa a ficar sempre visível. 44px é o mínimo recomendado pela WCAG. */
 @media (pointer: coarse) {
-  .barra { flex-wrap: wrap; max-width: calc(100vw - 24px); }
-  .modos button, .barra button.tema { padding: 12px 16px; font-size: 14px; }
-  .paleta-item { min-width: 64px; padding: 10px 8px; font-size: 12px; }
+  .modos button, .topo button.tema { padding: 12px 16px; font-size: 14px; }
   .roda-item { width: 84px; padding: 12px 4px; font-size: 12px; }
   .react-flow__handle.lado { width: 16px; height: 16px; opacity: 1; }
   .modal button { padding: 12px 18px; }
   .modal .deps button { padding: 8px 14px; }
   .modal input, .modal select, .modal textarea { padding: 12px; font-size: 16px; }
 }
+
+/* Telas de login/registro e seletor de projeto: mesmos cartões e variáveis do modal,
+   só centralizadas na tela inteira em vez de sobrepostas ao canvas. */
+.tela-auth {
+  width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--fundo-2);
+}
+.cartao {
+  background: var(--fundo); color: var(--texto); border-radius: 10px; padding: 28px;
+  width: min(360px, 92vw); box-shadow: 0 2px 10px var(--sombra); display: flex; flex-direction: column;
+}
+.cartao-larga { width: min(480px, 92vw); }
+.cartao h1 { margin: 0 0 16px; font-size: 20px; }
+.cartao label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--texto-2); }
+.cartao input, .cartao select {
+  width: 100%; padding: 8px; border: 1px solid var(--borda); border-radius: 6px;
+  background: var(--fundo); color: var(--texto); font: inherit; box-sizing: border-box;
+}
+.cartao > button, .novo-projeto button { margin-top: 16px; padding: 10px; border-radius: 6px; border: 1px solid var(--borda); background: var(--acento); color: var(--acento-texto); cursor: pointer; }
+.abas { display: flex; gap: 2px; margin-bottom: 4px; }
+.abas button {
+  flex: 1; padding: 8px; border: 1px solid var(--borda); background: var(--fundo);
+  color: var(--texto-2); cursor: pointer; font: inherit;
+}
+.abas button[aria-pressed="true"] { background: var(--acento); border-color: var(--acento); color: var(--acento-texto); }
+.topo-seletor { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.topo-seletor h1 { margin: 0; font-size: 20px; flex: 1; }
+.topo-seletor span { color: var(--texto-3); font-size: 13px; }
+.topo-seletor button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--borda); background: var(--fundo); color: var(--texto); cursor: pointer; }
+.lista-projetos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lista-projetos button {
+  width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--borda); border-radius: 8px;
+  background: var(--fundo); color: var(--texto); cursor: pointer; font: inherit;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.lista-projetos button:hover { border-color: var(--acento); }
+.lista-projetos .papel { font-size: 11px; color: var(--texto-3); text-transform: uppercase; }
+.novo-projeto { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--borda-2); }
+
+/* Indicadores de colaboração no modal: presença editando e conflito de versão. */
+.modal .presenca { color: var(--acento); font-size: 13px; margin: 0 0 8px; }
+.modal .conflito {
+  margin-top: 12px; padding: 10px 12px; border: 1px solid var(--perigo-borda); border-radius: 8px;
+  background: var(--fundo-2);
+}
+.modal .conflito p { margin: 0 0 8px; color: var(--perigo); font-size: 13px; }
+.selo {
+  font-size: 11px; text-transform: uppercase; color: var(--texto-3); border: 1px solid var(--borda);
+  border-radius: 4px; padding: 2px 6px;
+}
+
+/* ── Barra lateral ────────────────────────────────────────────────────────────
+   Catálogo de objetos, busca, outline do grafo e notas. Substitui a `.barra`
+   flutuante que acumulava tudo num canto do canvas. */
+.lateral {
+  border-right: 1px solid var(--borda-2); background: var(--fundo-2);
+  overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
+}
+.campo-busca {
+  width: 100%; box-sizing: border-box; padding: 7px 9px; font: inherit; font-size: 13px;
+  border: 1px solid var(--borda); border-radius: 6px; background: var(--fundo); color: var(--texto);
+}
+.secao { display: flex; flex-direction: column; }
+.secao-topo {
+  display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 12px;
+  padding: 4px 2px; border: none; background: none; cursor: pointer;
+  font: inherit; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--texto-3);
+}
+.secao-topo .seta { width: 10px; }
+.secao-topo .contagem, .grupo .contagem { margin-left: auto; color: var(--texto-4); }
+.grupo h3 {
+  display: flex; margin: 8px 0 2px; padding: 0 6px;
+  font-size: 11px; font-weight: 600; color: var(--texto-3);
+}
+.lateral .lista { list-style: none; margin: 0; padding: 0; }
+.lateral .lista button {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  padding: 5px 6px; border: none; border-radius: 6px; background: none;
+  font: inherit; font-size: 12px; color: var(--texto-2); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lateral .lista button:hover { background: var(--fundo-3); color: var(--texto); }
+.lateral .trecho { font-size: 11px; color: var(--texto-4); white-space: normal; }
+.lateral .vazio { margin: 4px 6px; font-size: 12px; color: var(--texto-4); font-style: italic; }
+/* Miniatura do item "nota" na paleta: mesmo tamanho das figuras do rough. */
+.mini-nota {
+  width: 44px; height: 30px; flex: none; border-radius: 2px;
+  background: #fde68a; border: 1px solid #eab308;
+}
+
+/* ── Nota no canvas ───────────────────────────────────────────────────────── */
+.nota {
+  min-height: 64px; padding: 9px 10px; border-radius: 3px; box-sizing: border-box;
+  background: #fde68a; color: #422006; border: 1px solid #eab308;
+  box-shadow: 0 2px 8px var(--sombra); font-size: 12px; line-height: 1.35;
+}
+.nota.selecionada { border-color: var(--acento); box-shadow: 0 0 0 2px var(--acento); }
+.nota-texto { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nota .vazio { color: #a16207; font-style: italic; }
+.nota textarea {
+  width: 100%; min-height: 60px; box-sizing: border-box; padding: 0; resize: vertical;
+  border: none; background: none; color: inherit; font: inherit; outline: none;
+}
+
+/* ── Menu do projeto (dropdown do topo) ───────────────────────────────────── */
+.menu-projeto { position: relative; }
+.menu-alvo {
+  display: flex; align-items: center; gap: 6px; max-width: 260px;
+  padding: 5px 10px; border: 1px solid transparent; border-radius: 6px;
+  background: none; color: var(--texto); font: inherit; cursor: pointer;
+}
+.menu-alvo:hover, .menu-alvo[aria-expanded="true"] { border-color: var(--borda); background: var(--fundo); }
+.menu-alvo strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-caixa {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 9; width: 260px;
+  padding: 6px; border: 1px solid var(--borda); border-radius: 8px;
+  background: var(--fundo); box-shadow: 0 4px 16px var(--sombra-2);
+}
+.menu-caixa .lista { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; }
+.menu-caixa .lista button {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 8px; border: none; border-radius: 6px; background: none;
+  font: inherit; font-size: 13px; color: var(--texto); text-align: left; cursor: pointer;
+}
+.menu-caixa .lista button:hover { background: var(--fundo-3); }
+.menu-caixa .lista button[aria-current="true"] { background: var(--fundo-3); font-weight: 600; }
+.menu-caixa .papel { font-size: 10px; text-transform: uppercase; color: var(--texto-4); }
+.menu-caixa .vazio { margin: 8px; font-size: 12px; color: var(--texto-4); }
+.menu-rodape {
+  display: flex; align-items: center; gap: 8px; margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid var(--borda-2);
+}
+.menu-rodape .quem { flex: 1; font-size: 11px; color: var(--texto-3); overflow: hidden; text-overflow: ellipsis; }
+.menu-rodape button {
+  padding: 5px 8px; border: 1px solid var(--borda); border-radius: 6px;
+  background: var(--fundo); color: var(--texto-2); font: inherit; font-size: 12px; cursor: pointer;
+}
+
+/* ── Presença no topo ─────────────────────────────────────────────────────── */
+.presentes { display: flex; }
+.presentes .avatar {
+  width: 24px; height: 24px; margin-left: -6px; border-radius: 50%;
+  border: 2px solid var(--fundo-2); background: var(--acento); color: var(--acento-texto);
+  display: grid; place-items: center; font-size: 10px; font-weight: 600;
+}
+
+@media (pointer: coarse) {
+  /* Barra lateral estreita demais para o dedo: vira faixa mais larga e os alvos crescem. */
+  .corpo { grid-template-columns: 200px 1fr; }
+  .lateral .lista button, .paleta-item { padding: 10px 8px; font-size: 14px; }
+  .menu-caixa .lista button, .menu-rodape button { padding: 12px 10px; }
+}
+
+/* ── Paleta de setas ──────────────────────────────────────────────────────────
+   Mesmo item da paleta de formas, com uma amostra da linha no lugar da figura. */
+.paleta-setas { display: flex; flex-direction: column; gap: 2px; }
+.paleta-setas .grupo { display: flex; flex-direction: column; }
+.paleta-setas h3 {
+  margin: 8px 0 2px; padding: 0 6px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--texto-4);
+}
+.paleta-setas .paleta-item { cursor: pointer; }
+.paleta-setas svg { flex: none; }
+
+/* Outline: categoria > tipo > nós. */
+.lateral .subgrupo { margin-left: 6px; }
+.lateral .subgrupo h4 {
+  display: flex; margin: 6px 0 1px; padding: 0 6px;
+  font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--texto-4);
+}
+.lateral .subgrupo h4 .contagem { margin-left: auto; }
+
+/* Selo da categoria no título do modal do nó. */
+.modal h2 .selo { margin-left: 10px; vertical-align: middle; font-weight: 400; }

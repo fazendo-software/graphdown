@@ -1,122 +1,101 @@
 import { useEffect, useState } from "react";
 import MarkdownIt from "markdown-it";
-import type { Categoria } from "../../core/tipos.ts";
-import { api, type NoDetalhe } from "./api.ts";
-import { lerDeps, salvarDeps, type Dependencia } from "./deps.ts";
+import type { Papel } from "../../core/tipos.ts";
+import { ErroConflito, type apiProjeto, type NoDetalhe } from "./api.ts";
+import { categoriaDoNo, type Catalogo } from "./grafoRender.ts";
 
+// html:false + a validação de link padrão do markdown-it (bloqueia javascript:/vbscript:/
+// data: fora de imagem) é a sanitização exigida pelo contrato: corpo agora é texto de
+// outro usuário, não mais um arquivo local. Sem lib nova — é a própria config do parser.
 const md = new MarkdownIt({ html: false, linkify: true });
 
 type Props = {
   id: string;
-  categoria: Categoria;
+  catalogo: Catalogo;
+  papel: Papel;
+  api: ReturnType<typeof apiProjeto>;
+  presenca: { id: string; nome: string; editando: string | null }[];
+  meuId: string;
+  enviarEditando: (no: string | null) => void;
   aoFechar: () => void;
-  aoMudar: () => void;
 };
 
-function Dependencias({
-  lista,
-  tipos,
-  aoSalvar,
-}: {
-  lista: Dependencia[];
-  tipos: string[];
-  aoSalvar: (lista: Dependencia[]) => void;
-}) {
-  if (lista.length === 0) return null;
-  return (
-    <>
-      <label>depende de</label>
-      <ul className="deps">
-        {lista.map((d, i) => (
-          <li key={`${d.de}-${i}`}>
-            <code>{d.de}</code>
-            {tipos.length > 0 ? (
-              <select
-                value={d.tipo ?? "padrao"}
-                aria-label={`tipo da aresta vinda de ${d.de}`}
-                onChange={(e) => {
-                  const tipo = e.target.value === "padrao" ? undefined : e.target.value;
-                  aoSalvar(lista.map((x, j) => (i === j ? { ...x, tipo } : x)));
-                }}
-              >
-                {tipos.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            <button
-              type="button"
-              className="perigo"
-              title="remover dependência"
-              onClick={() => aoSalvar(lista.filter((_, j) => j !== i))}
-            >
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
-
-export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
+export function Modal({ id, catalogo, papel, api, presenca, meuId, enviarEditando, aoFechar }: Props) {
   const [no, setNo] = useState<NoDetalhe | null>(null);
   const [editandoCorpo, setEditandoCorpo] = useState(false);
   const [rascunho, setRascunho] = useState("");
+  const [conflito, setConflito] = useState<{ versao: number; corpo: string } | null>(null);
   const [falha, setFalha] = useState<string | null>(null);
+  const somenteLeitura = papel === "leitor";
 
   useEffect(() => {
     setNo(null);
     setEditandoCorpo(false);
+    setConflito(null);
     api
       .no(id)
       .then(setNo)
       .catch((e: Error) => setFalha(e.message));
-  }, [id]);
+  }, [id, api]);
+
+  // Presença de edição: avisa o servidor quando abre/fecha o rascunho, inclusive se o
+  // modal for fechado com o rascunho aberto.
+  useEffect(() => {
+    enviarEditando(editandoCorpo ? id : null);
+    return () => {
+      if (editandoCorpo) enviarEditando(null);
+    };
+    // enviarEditando é estável (vem do App, não muda por render) — não entra nas deps
+    // pra não reenviar "editando" toda vez que o Canvas re-renderiza.
+  }, [editandoCorpo, id]);
 
   async function salvarCampo(chave: string, valor: string) {
     try {
       await api.patchNo(id, { [chave]: valor });
       setNo(await api.no(id));
-      aoMudar();
     } catch (e) {
       setFalha((e as Error).message);
     }
   }
 
-  async function salvarCorpo() {
+  async function salvarCorpo(forcarVersao?: number) {
+    if (!no) return;
+    const texto = rascunho.endsWith("\n") ? rascunho : `${rascunho}\n`;
     try {
-      await api.putCorpo(id, rascunho.endsWith("\n") ? rascunho : `${rascunho}\n`);
-      setNo(await api.no(id));
+      const r = await api.putCorpo(id, texto, forcarVersao ?? no.versao);
+      setNo({ ...no, corpo: texto, versao: r.versao });
       setEditandoCorpo(false);
-      aoMudar();
+      setConflito(null);
     } catch (e) {
+      if (e instanceof ErroConflito) {
+        setConflito({ versao: e.versao, corpo: e.corpo });
+        return;
+      }
       setFalha((e as Error).message);
     }
   }
 
-  async function salvarDependencias(lista: Dependencia[]) {
-    try {
-      await salvarDeps(id, lista);
-      setNo(await api.no(id));
-      aoMudar();
-    } catch (e) {
-      setFalha((e as Error).message);
-    }
+  function usarTextoDoServidor() {
+    if (!no || !conflito) return;
+    setNo({ ...no, corpo: conflito.corpo, versao: conflito.versao });
+    setRascunho(conflito.corpo);
+    setConflito(null);
   }
 
   async function apagar() {
-    if (!window.confirm(`Mover "${id}" para a lixeira?`)) return;
+    if (!window.confirm(`Apagar "${id}"?`)) return;
     try {
       await api.apagarNo(id);
-      aoMudar();
       aoFechar();
     } catch (e) {
       setFalha((e as Error).message);
     }
   }
+
+  const quemEdita = presenca.find((p) => p.editando === id && p.id !== meuId);
+  // Os campos do formulário são os da categoria DESTE nó, não os do projeto: um projeto
+  // mistura Processo, Dados e Atores, e cada um declara campos diferentes.
+  const categoria = no ? categoriaDoNo(catalogo, no.categoria_id) : undefined;
 
   return (
     <div className="modal-fundo" onClick={aoFechar}>
@@ -133,24 +112,19 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
           </>
         ) : no.erro ? (
           <>
-            <h2>{id}</h2>
-            <p className="erro">Frontmatter inválido: {no.erro}</p>
-            <p>
-              Corrija o arquivo <code>{id}.md</code> num editor de texto.
-            </p>
+            <h2>{no.titulo}</h2>
+            <p className="erro">Não confere com a categoria: {no.erro}</p>
           </>
         ) : (
           <>
-            <h2>{String(no.campos.titulo ?? id)}</h2>
+            <h2>
+              {no.titulo}
+              {categoria ? <span className="selo">{categoria.nome}</span> : null}
+            </h2>
 
-            <label htmlFor="campo-titulo">titulo</label>
-            <input
-              id="campo-titulo"
-              defaultValue={String(no.campos.titulo ?? "")}
-              onBlur={(e) => void salvarCampo("titulo", e.target.value)}
-            />
+            {quemEdita ? <p className="presenca">✎ {quemEdita.nome} está editando</p> : null}
 
-            {categoria.campos.map((campo) => {
+            {(categoria?.campos ?? []).map((campo) => {
               const valor = String(no.campos[campo.chave] ?? "");
               return (
                 <div key={campo.chave}>
@@ -159,6 +133,7 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
                     <select
                       id={`campo-${campo.chave}`}
                       defaultValue={valor}
+                      disabled={somenteLeitura}
                       onChange={(e) => void salvarCampo(campo.chave, e.target.value)}
                     >
                       {(campo.opcoes ?? []).map((o) => (
@@ -171,6 +146,7 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
                     <input
                       id={`campo-${campo.chave}`}
                       defaultValue={valor}
+                      disabled={somenteLeitura}
                       onBlur={(e) => void salvarCampo(campo.chave, e.target.value)}
                     />
                   )}
@@ -178,35 +154,41 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
               );
             })}
 
-            <Dependencias
-              lista={lerDeps(no.campos)}
-              tipos={Object.keys(categoria.arestas ?? {})}
-              aoSalvar={(lista) => void salvarDependencias(lista)}
-            />
-
             <label>detalhe</label>
             {editandoCorpo ? (
               <>
                 <textarea value={rascunho} onChange={(e) => setRascunho(e.target.value)} />
-                <div className="modal-acoes">
-                  <button onClick={() => setEditandoCorpo(false)}>cancelar</button>
-                  <button onClick={() => void salvarCorpo()}>salvar detalhe</button>
-                </div>
+                {conflito ? (
+                  <div className="conflito">
+                    <p>O texto mudou desde que você abriu. Sobrescrever mesmo assim?</p>
+                    <div className="modal-acoes">
+                      <button onClick={usarTextoDoServidor}>ver o texto novo</button>
+                      <button className="perigo" onClick={() => void salvarCorpo(conflito.versao)}>
+                        sobrescrever
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="modal-acoes">
+                    <button onClick={() => setEditandoCorpo(false)}>cancelar</button>
+                    <button onClick={() => void salvarCorpo()}>salvar detalhe</button>
+                  </div>
+                )}
               </>
             ) : (
               <div
                 className="detalhe"
                 onDoubleClick={() => {
+                  if (somenteLeitura) return;
                   setRascunho(no.corpo);
                   setEditandoCorpo(true);
                 }}
-                // seguro: markdown-it com html:false, conteudo vem de arquivo local do usuario
-                // Nó recem-criado tem corpo vazio: sem o placeholder o alvo do duplo-clique
-                // teria altura zero e nao daria pra escrever o detalhe pela UI.
+                // seguro: ver comentário do `md` acima — html:false e validação de link
+                // do próprio markdown-it, sem lib de sanitização extra.
                 dangerouslySetInnerHTML={{
                   __html: no.corpo.trim()
                     ? md.render(no.corpo)
-                    : '<p class="vazio">duplo-clique para escrever o detalhe</p>',
+                    : `<p class="vazio">${somenteLeitura ? "sem detalhe" : "duplo-clique para escrever o detalhe"}</p>`,
                 }}
               />
             )}
@@ -214,9 +196,11 @@ export function Modal({ id, categoria, aoFechar, aoMudar }: Props) {
             {falha ? <p className="erro">{falha}</p> : null}
 
             <div className="modal-acoes">
-              <button className="perigo" onClick={() => void apagar()}>
-                apagar passo
-              </button>
+              {!somenteLeitura ? (
+                <button className="perigo" onClick={() => void apagar()}>
+                  apagar passo
+                </button>
+              ) : null}
               <button onClick={aoFechar}>fechar</button>
             </div>
           </>

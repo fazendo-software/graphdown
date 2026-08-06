@@ -10,6 +10,9 @@ export default defineConfig({
   build: { outDir: "dist", emptyOutDir: true },
   server: {
     port: 5173,
-    proxy: { "/api": { target: "http://localhost:5174", ws: false } },
+    proxy: {
+      "/api": { target: "http://localhost:5174", ws: false },
+      "/ws": { target: "http://localhost:5174", ws: true },
+    },
   },
 });

@@ -1,21 +1,34 @@
 #!/usr/bin/env -S node --experimental-strip-types
-import { resolve } from "node:path";
+import { migrar } from "../migracoes/runner.ts";
+import { semear } from "../migracoes/seed.ts";
+import { criarPool } from "./db.ts";
 import { criarServidor } from "./rotas.ts";
-import { observar } from "./watcher.ts";
+import { SalaProjetos } from "./ws.ts";
 
-const [comando, alvo] = process.argv.slice(2);
+const [comando] = process.argv.slice(2);
 
-if (comando !== "serve" || !alvo) {
-  console.error("uso: grapydown serve <pasta>");
+if (comando !== "serve") {
+  console.error("uso: grapydown serve");
   process.exit(1);
 }
 
-const dir = resolve(alvo);
-const porta = Number(process.env.PORTA ?? 5174);
+for (const nome of ["DATABASE_URL", "COOKIE_SECRET"]) {
+  if (!process.env[nome]) {
+    console.error(`variável de ambiente ausente: ${nome}`);
+    process.exit(1);
+  }
+}
 
-observar(dir);
-// 127.0.0.1 e nao 0.0.0.0: nao ha autenticacao nenhuma, e as rotas escrevem e apagam
-// arquivos. Ninguem na mesma rede pode alcancar a pasta do usuario.
-criarServidor(dir).listen(porta, "127.0.0.1", () => {
-  console.log(`grapydown  ${dir}\n           http://localhost:${porta}`);
+const porta = Number(process.env.PORTA ?? 5174);
+const pool = criarPool();
+
+await migrar(pool);
+await semear(pool);
+
+const sala = new SalaProjetos(pool);
+const servidor = criarServidor(pool, sala);
+sala.anexar(servidor);
+
+servidor.listen(porta, () => {
+  console.log(`grapydown  http://localhost:${porta}`);
 });

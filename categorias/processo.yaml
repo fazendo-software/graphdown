@@ -1,8 +1,8 @@
 nome: Processo
 campos:
-  # `tipo` vem primeiro de proposito: templateNo preenche enum com opcoes[0].
-  - { chave: tipo, tipo: enum, opcoes: [passo, decisao, inicio, fim, ator] }
-  - { chave: responsavel, tipo: texto, obrigatorio: true }
+  # `tipo` vem primeiro de proposito: camposPadrao preenche enum com opcoes[0].
+  - { chave: tipo, tipo: enum, opcoes: [passo, subprocesso, decisao, manual, atraso, espera, paralelo, entrada-manual, preparacao, inicio, fim] }
+  - { chave: responsavel, tipo: texto }
   - { chave: status, tipo: enum, opcoes: [rascunho, ativo, bloqueado, concluido] }
 
 # Recurso e da transicao, nao do passo: prazo e "quanto custa ir de A ate B".
@@ -16,10 +16,16 @@ campos_aresta:
 forma_por: tipo
 formas:
   passo: retangulo
+  subprocesso: subprocesso
   decisao: losango
+  manual: trapezio
+  atraso: atraso
+  espera: ampulheta
+  paralelo: barra
+  entrada-manual: teclado
+  preparacao: hexagono
   inicio: estadio
   fim: estadio
-  ator: ator
 
 cor_por: status
 cores:
@@ -28,8 +34,16 @@ cores:
   bloqueado: "#dc2626"
   concluido: "#16a34a"
 
+# As setas valem para o projeto inteiro, nao so para esta categoria: o servidor funde o bloco
+# `arestas` de todas as categorias do projeto, e a principal ganha em caso de chave repetida.
+# `grupo` e so rotulo de UI - a barra lateral separa a paleta de setas por ele.
 arestas:
   # Sem `cor`: a seta comum segue o tema (escura no claro, clara no escuro).
-  padrao: { estilo: continua, ponta: cheia }
-  excecao: { estilo: tracejada, ponta: aberta, cor: "#dc2626" }
-  dado: { estilo: pontilhada, ponta: nenhuma, cor: "#2563eb" }
+  padrao: { grupo: fluxo, estilo: continua, ponta: cheia }
+  bidirecional: { grupo: fluxo, estilo: continua, ponta: ambas }
+  sim: { grupo: condicional, estilo: continua, ponta: cheia, cor: "#16a34a" }
+  nao: { grupo: condicional, estilo: continua, ponta: cheia, cor: "#dc2626" }
+  excecao: { grupo: condicional, estilo: tracejada, ponta: aberta, cor: "#dc2626" }
+  dado: { grupo: dados, estilo: pontilhada, ponta: nenhuma, cor: "#2563eb" }
+  informativa: { grupo: dados, estilo: pontilhada, ponta: aberta, cor: "#0891b2" }
+  retrabalho: { grupo: retorno, estilo: tracejada, ponta: cheia, cor: "#ca8a04" }

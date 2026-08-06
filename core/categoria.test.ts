@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseCategoria, templateNo, idDeTitulo } from "./categoria.ts";
+import { parseCategoria, camposPadrao, validarCampos, idDeTitulo } from "./categoria.ts";
 
 const YAML_CAT = `nome: Processo
 campos:
@@ -50,14 +50,24 @@ test("parseCategoria de categoria antiga não inventa formas nem arestas", () =>
   assert.equal(c.arestas, undefined);
 });
 
-test("templateNo gera frontmatter com todos os campos da categoria", () => {
-  const texto = templateNo(parseCategoria(YAML_CAT), "Aprovação do gestor");
-  assert.match(texto, /^---\n/);
-  assert.match(texto, /titulo: Aprovação do gestor/);
-  assert.match(texto, /responsavel: ""/);
-  assert.match(texto, /status: rascunho/);
-  assert.match(texto, /depende_de: \[\]/);
-  assert.ok(texto.endsWith("---\n"));
+test("camposPadrao preenche enum com a primeira opção e texto vazio", () => {
+  const campos = camposPadrao(parseCategoria(YAML_CAT));
+  assert.equal(campos.responsavel, "");
+  assert.equal(campos.status, "rascunho");
+});
+
+test("validarCampos acusa obrigatório vazio", () => {
+  const cat = parseCategoria(YAML_CAT);
+  assert.match(validarCampos(cat, { responsavel: "", status: "rascunho" }) ?? "", /responsavel/);
+  assert.equal(validarCampos(cat, { responsavel: "rh", status: "rascunho" }), undefined);
+});
+
+test("validarCampos acusa valor de enum fora das opções", () => {
+  const cat = parseCategoria(YAML_CAT);
+  assert.match(
+    validarCampos(cat, { responsavel: "rh", status: "arquivado" }) ?? "",
+    /status/,
+  );
 });
 
 test("idDeTitulo faz slug sem acento", () => {
