@@ -24,6 +24,7 @@ export function tamanhoDoNo(forma: string): Tamanho {
 // Mora aqui e nao no componente porque o layout (dagre) precisa disso sem tocar em React.
 export const TAMANHOS: Record<string, Tamanho> = {
   retangulo: { largura: 200, altura: 76 },
+  embed: { largura: 320, altura: 180 },
   losango: { largura: 180, altura: 110 },
   estadio: { largura: 160, altura: 64 },
   paralelogramo: { largura: 200, altura: 76 },

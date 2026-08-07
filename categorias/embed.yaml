@@ -1,0 +1,13 @@
+nome: Conteúdo incorporado
+incorporavel: true
+campos:
+  - { chave: tipo, tipo: enum, opcoes: [embed] }
+  - { chave: url, tipo: texto } # https://youtube.com/watch?v=… ou site que permita iframe
+
+forma_por: tipo
+formas:
+  embed: embed
+
+cor_por: tipo
+cores:
+  embed: "#0f766e"

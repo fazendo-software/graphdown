@@ -7,13 +7,25 @@ import type {
   Layout,
   No,
   Nota,
+  ObjetoSeta,
   Posicao,
 } from "../../core/tipos.ts";
 import type { ArestaComId, GrafoResposta } from "./api.ts";
 import type { DadosNo } from "./NoProcesso.tsx";
 import type { DadosNota } from "./NotaNo.tsx";
-import { ARESTA_PADRAO } from "./ArestaRough.tsx";
+import type { DadosSetaLivre } from "./SetaLivreNo.tsx";
+import { caixaDosPontos } from "./setasLivres.ts";
 import type { RenderState } from "./diffGrafo.ts";
+
+/** Sem `cor`: quem não declarou cor na categoria segue o tema. `grupo` é rótulo de UI e não
+ * tem padrão — seta sem grupo cai na seção "outras" da paleta.
+ *
+ * Mora aqui, e não no componente da aresta, para este módulo continuar carregável fora do
+ * navegador: os testes montam nós e arestas pelo caminho real, sem tocar em `.tsx`. */
+export const ARESTA_PADRAO: Omit<Required<EstiloAresta>, "cor" | "grupo"> = {
+  estilo: "continua",
+  ponta: "cheia",
+};
 
 export type DadosAresta = EstiloAresta & { aresta: ArestaComId };
 
@@ -114,8 +126,10 @@ export function nodeDeReal(no: No, cat: Catalogo, posicao: Posicao, somenteLeitu
       fantasma: false,
       tipo: tipoDoNo(categoria, no.campos),
       categoria: categoria?.nome ?? "",
+      embedUrl: categoria?.incorporavel ? String(no.campos.url ?? "") : undefined,
       erro: no.erro,
       somenteLeitura,
+      execucao: no.execucao,
     } as DadosNo,
   };
 }
@@ -147,6 +161,28 @@ export function nodeDeNota(
   };
 }
 
+export function nodeDeSetaLivre(
+  seta: ObjetoSeta,
+  somenteLeitura: boolean,
+  aoAlterarPontos: (id: string, pontos: ObjetoSeta["pontos"]) => void,
+): Node {
+  const caixa = caixaDosPontos(seta.pontos);
+  return {
+    id: seta.id,
+    type: "seta-livre",
+    position: { x: caixa.x, y: caixa.y },
+    width: caixa.largura,
+    height: caixa.altura,
+    data: {
+      tipo: seta.tipo,
+      pontos: seta.pontos,
+      caixa,
+      somenteLeitura,
+      aoAlterarPontos: (pontos) => aoAlterarPontos(seta.id, pontos),
+    } as DadosSetaLivre,
+  };
+}
+
 export function edgeDeAresta(a: ArestaComId, cat: Catalogo, corPadrao: string): Edge {
   const estilo = estiloDaAresta(cat, a.tipo, corPadrao);
   return {
@@ -167,6 +203,7 @@ export function montarTudo(
   corPadrao: string,
   somenteLeitura: boolean,
   aoSalvarNota: (id: string, conteudo: string) => void,
+  aoAlterarSeta: (id: string, pontos: ObjetoSeta["pontos"]) => void,
 ): RenderState {
   const reais = new Set(g.nos.map((n) => n.id));
   const nos = g.nos.map((n) => nodeDeReal(n, cat, layout[n.id] ?? { x: 0, y: 0 }, somenteLeitura));
@@ -175,6 +212,7 @@ export function montarTudo(
     nos.push(nodeDeFantasma(id, layout[id] ?? { x: 0, y: 0 }));
   }
   for (const nota of g.notas) nos.push(nodeDeNota(nota, somenteLeitura, aoSalvarNota));
+  for (const seta of g.objetosSeta) nos.push(nodeDeSetaLivre(seta, somenteLeitura, aoAlterarSeta));
   const arestas = g.arestas.map((a) => edgeDeAresta(a, cat, corPadrao));
   return { nos, arestas };
 }

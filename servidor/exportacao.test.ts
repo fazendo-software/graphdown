@@ -14,8 +14,8 @@ test("snapshot abre transação repetível somente leitura e traz todos os corpo
       if (sql.includes("from nos where")) {
         return {
           rows: [
-            { id: "a", titulo: "A", categoria_id: "categoria", campos: {}, corpo: "corpo A", versao: 1, erro: null, pos_x: 1, pos_y: 2 },
-            { id: "b", titulo: "B", categoria_id: "categoria", campos: {}, corpo: "corpo B", versao: 1, erro: null, pos_x: null, pos_y: null },
+            { id: "a", titulo: "A", categoria_id: "categoria", campos: {}, corpo: "corpo A", versao: 1, erro: null, pos_x: 1, pos_y: 2, eh_tarefa: true, estado_execucao: "concluido" },
+            { id: "b", titulo: "B", categoria_id: "categoria", campos: {}, corpo: "corpo B", versao: 1, erro: null, pos_x: null, pos_y: null, eh_tarefa: false, estado_execucao: null },
           ],
         };
       }
@@ -33,7 +33,14 @@ test("snapshot abre transação repetível somente leitura e traz todos os corpo
   assert.equal(consultas[0], "begin transaction isolation level repeatable read read only");
   const consultasDeNos = consultas.filter((sql) => sql.includes("from nos where"));
   assert.equal(consultasDeNos.length, 1, "corpos de todos os nós devem vir da única consulta em lote");
-  assert.match(consultasDeNos[0], /select id, titulo, categoria_id, campos, corpo, versao, erro, pos_x, pos_y/);
+  assert.match(
+    consultasDeNos[0],
+    /select id, titulo, categoria_id, campos, corpo, versao, erro, pos_x, pos_y, eh_tarefa, estado_execucao/,
+  );
+  assert.deepEqual(snapshot?.nos.map((no) => no.execucao), [
+    { tarefa: true, estado: "concluido" },
+    { tarefa: false, estado: null },
+  ]);
   assert.equal(consultas.at(-1), "commit");
   assert.equal(liberado, true);
 });

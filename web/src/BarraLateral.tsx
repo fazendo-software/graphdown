@@ -1,21 +1,29 @@
 import { useEffect, useState } from "react";
-import type { Nota, ResultadoBusca } from "../../core/tipos.ts";
+import type { Nota, ObjetoSeta, ResultadoBusca } from "../../core/tipos.ts";
+import { percentualDeProgresso, type Progresso, type ProgressoFluxo } from "../../core/progresso.ts";
 import { PaletaFormas } from "./PaletaFormas.tsx";
 import { PaletaSetas } from "./PaletaSetas.tsx";
+import { PaletaSetasLivres } from "./PaletaSetasLivres.tsx";
 import { formaDoTipo, tiposDeForma, type Catalogo } from "./grafoRender.ts";
+import type { TipoSetaLivre } from "./setasLivres.ts";
 
 /** Item do outline: um nó do grafo já reduzido ao que a lista precisa. */
 export type ItemGrafo = { id: string; titulo: string; tipo: string; categoria: string };
 
 /** Objeto armado na paleta: qual categoria cria e qual tipo dentro dela. `nota` é o caso
  * especial que não pertence a categoria nenhuma. */
-export type Armado = { categoriaId: string; tipo: string } | { categoriaId: null; tipo: "nota" };
+export type Armado =
+  | { categoriaId: string; tipo: string }
+  | { categoriaId: null; tipo: "nota" }
+  | { categoriaId: null; tipo: "seta-livre"; variante: TipoSetaLivre };
 
 type Props = {
   catalogo: Catalogo | null;
   somenteLeitura: boolean;
   itens: ItemGrafo[];
+  progresso: Progresso;
   notas: Nota[];
+  setasLivres: ObjetoSeta[];
   armado: Armado | null;
   setaArmada: string | null;
   aoArmar: (a: Armado) => void;
@@ -47,11 +55,27 @@ function Secao({
   );
 }
 
+/** Barra + números, ou o texto `sem tarefas`. Nunca `0%` para quem não tem tarefa: essa
+ * é a diferença entre "nada feito" e "não é trabalho a fazer". */
+function Badge({ fluxo }: { fluxo: ProgressoFluxo }) {
+  if (fluxo.estado === "sem_tarefas") return <span className="badge-progresso vazio">sem tarefas</span>;
+  return (
+    <span className="badge-progresso" title={`${fluxo.concluidas} de ${fluxo.tarefas} tarefas concluídas`}>
+      <span className="barra-progresso" aria-hidden="true">
+        <span style={{ width: `${fluxo.percentual}%` }} />
+      </span>
+      {fluxo.concluidas}/{fluxo.tarefas} · {fluxo.percentual}%
+    </span>
+  );
+}
+
 export function BarraLateral({
   catalogo,
   somenteLeitura,
   itens,
+  progresso,
   notas,
+  setasLivres,
   armado,
   setaArmada,
   aoArmar,
@@ -81,6 +105,9 @@ export function BarraLateral({
       clearTimeout(timer);
     };
   }, [q, aoBuscar]);
+
+  // O badge de um fluxo mostra o nome do nó-raiz; a lista de itens já tem esse nome.
+  const titulos = new Map(itens.map((item) => [item.id, item.titulo]));
 
   // Outline agrupado por categoria e, dentro dela, por tipo — mesma hierarquia da paleta.
   const porCategoria = new Map<string, Map<string, ItemGrafo[]>>();
@@ -143,6 +170,13 @@ export function BarraLateral({
             <PaletaSetas estilos={catalogo.arestasEstilo} armada={setaArmada} aoArmar={aoArmarSeta} />
           </Secao>
 
+          <Secao titulo="objetos de seta">
+            <PaletaSetasLivres
+              armada={armado && "variante" in armado ? armado.variante : null}
+              aoArmar={(variante) => aoArmar({ categoriaId: null, tipo: "seta-livre", variante })}
+            />
+          </Secao>
+
           <Secao titulo="anotação">
             <button
               type="button"
@@ -164,6 +198,45 @@ export function BarraLateral({
       ) : null}
 
       <Secao titulo="grafo" contagem={itens.length}>
+        <div className="progresso-projeto">
+          {progresso.resumo.tarefas === 0 ? (
+            <p className="vazio">nenhuma tarefa marcada — este projeto está só descrito.</p>
+          ) : (
+            <>
+              <div className="progresso-linha">
+                <strong>progresso</strong>
+                <Badge
+                  fluxo={{
+                    estado: "com_tarefas",
+                    tarefas: progresso.resumo.tarefas,
+                    concluidas: progresso.resumo.concluidas,
+                    percentual: percentualDeProgresso(progresso.resumo.concluidas, progresso.resumo.tarefas),
+                  }}
+                />
+              </div>
+              {progresso.resumo.emAndamento > 0 || progresso.resumo.bloqueadas > 0 ? (
+                <p className="dica-progresso">
+                  {progresso.resumo.emAndamento > 0 ? `${progresso.resumo.emAndamento} em andamento` : null}
+                  {progresso.resumo.emAndamento > 0 && progresso.resumo.bloqueadas > 0 ? " · " : null}
+                  {progresso.resumo.bloqueadas > 0 ? `${progresso.resumo.bloqueadas} bloqueada(s)` : null}
+                </p>
+              ) : null}
+              {/* Um ciclo não tem "primeiro nó", então nenhum badge de fluxo o representa.
+                  Dizer isso é melhor que somir com as tarefas dele da lateral. */}
+              {progresso.raizes.every((raiz) => raiz.progresso.estado === "sem_tarefas") ? (
+                <p className="dica-progresso">tarefas fora de um fluxo com início definido.</p>
+              ) : null}
+            </>
+          )}
+          {progresso.raizes.map((raiz) => (
+            <div key={raiz.id} className="progresso-linha">
+              <button type="button" className="link-fluxo" onClick={() => aoIrPara(raiz.id)}>
+                {titulos.get(raiz.id) ?? raiz.id}
+              </button>
+              <Badge fluxo={raiz.progresso} />
+            </div>
+          ))}
+        </div>
         {itens.length === 0 ? (
           <p className="vazio">nenhum objeto ainda.</p>
         ) : (
@@ -203,6 +276,22 @@ export function BarraLateral({
               <li key={n.id}>
                 <button type="button" onClick={() => aoIrPara(n.id)}>
                   🗒 {n.conteudo.trim().split("\n")[0] || "(vazia)"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Secao>
+
+      <Secao titulo="objetos de seta" contagem={setasLivres.length}>
+        {setasLivres.length === 0 ? (
+          <p className="vazio">nenhuma seta livre.</p>
+        ) : (
+          <ul className="lista">
+            {setasLivres.map((seta) => (
+              <li key={seta.id}>
+                <button type="button" onClick={() => aoIrPara(seta.id)}>
+                  ↗ {seta.tipo === "cotovelo" ? "seta em cotovelo" : seta.tipo === "bloco" ? "seta em bloco" : seta.tipo}
                 </button>
               </li>
             ))}

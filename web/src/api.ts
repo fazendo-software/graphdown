@@ -8,6 +8,7 @@ import type {
   Layout,
   No,
   Nota,
+  ObjetoSeta,
   Projeto,
   ResultadoBusca,
   Usuario,
@@ -28,6 +29,7 @@ export type GrafoResposta = {
   fantasmas: string[];
   layout: Layout;
   notas: Nota[];
+  objetosSeta: ObjetoSeta[];
 };
 
 export type NoDetalhe = {
@@ -40,6 +42,7 @@ export type NoDetalhe = {
   corpo: string;
   versao: number;
   erro?: string;
+  execucao: No["execucao"];
 };
 
 /** 409 do PUT de corpo: alguém salvou entre a abertura e o clique em "salvar". */
@@ -110,10 +113,12 @@ export function apiProjeto(projetoId: string) {
         method: "POST",
         body: JSON.stringify({ titulo, categoria_id: categoriaId, campos }),
       }),
-    patchNo: (id: string, campos: Record<string, unknown>, titulo?: string) =>
-      pedir<{ ok: true }>(`${base}/nos/${encodeURIComponent(id)}`, {
+    /** Um PATCH só, com o que mudou: o servidor grava título, campos e execução como uma
+     * atualização lógica e emite um único `no-mudou`. */
+    patchNo: (id: string, dados: { titulo?: string; campos?: Record<string, unknown>; execucao?: No["execucao"] }) =>
+      pedir<{ ok: true; no: No }>(`${base}/nos/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        body: JSON.stringify({ campos, ...(titulo === undefined ? {} : { titulo }) }),
+        body: JSON.stringify(dados),
       }),
     renomearNo: (id: string, titulo: string) =>
       pedir<{ ok: true }>(`${base}/nos/${encodeURIComponent(id)}`, {
@@ -170,5 +175,14 @@ export function apiProjeto(projetoId: string) {
       }),
     apagarNota: (id: string) =>
       pedir<{ ok: true }>(`${base}/notas/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    criarObjetoSeta: (tipo: ObjetoSeta["tipo"], pontos: ObjetoSeta["pontos"]) =>
+      pedir<ObjetoSeta>(`${base}/objetos-seta`, { method: "POST", body: JSON.stringify({ tipo, pontos }) }),
+    patchObjetoSeta: (id: string, dados: Partial<Pick<ObjetoSeta, "tipo" | "pontos">>) =>
+      pedir<ObjetoSeta>(`${base}/objetos-seta/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(dados),
+      }),
+    apagarObjetoSeta: (id: string) =>
+      pedir<{ ok: true }>(`${base}/objetos-seta/${encodeURIComponent(id)}`, { method: "DELETE" }),
   };
 }

@@ -1,7 +1,10 @@
 import { memo, useMemo, type CSSProperties } from "react";
 import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
+import type { No } from "../../core/tipos.ts";
 import { ALTURA_ROTULO, desenharForma, seedDoId, tamanhoDe } from "./rough.ts";
 import { useCores } from "./tema.ts";
+import { corDeExecucao, GLIFO_EXECUCAO, ROTULO_EXECUCAO } from "./execucao.ts";
+import { urlDoEmbed } from "./embed.ts";
 
 export type DadosNo = {
   titulo: string;
@@ -13,10 +16,15 @@ export type DadosNo = {
   tipo?: string;
   /** Nome da categoria do nó, pelo mesmo motivo: agrupar o outline sem consultar o catálogo. */
   categoria?: string;
+  /** URL do objeto incorporável; só categorias declaradas como tal a preenchem. */
+  embedUrl?: string;
   erro?: string;
   /** Nome de quem está arrastando este nó agora, se for outra pessoa. */
   movidoPor?: string;
   somenteLeitura?: boolean;
+  /** Ausente em fantasma, nota e seta livre — nenhum deles tem estado de execução.
+   * A aresta lê isto do nó de destino, então o `no-mudou` já repinta o fluxo. */
+  execucao?: No["execucao"];
 };
 
 const CENTRADO: CSSProperties = {
@@ -40,7 +48,7 @@ const RECUO_PADRAO: CSSProperties = { padding: "12px 14px" };
 const LADOS = [Position.Top, Position.Right, Position.Bottom, Position.Left];
 
 function Componente({ id, data, selected, width, height }: NodeProps) {
-  const { titulo, cor, forma, fantasma, erro, movidoPor, somenteLeitura } = data as DadosNo;
+  const { titulo, cor, forma, fantasma, erro, movidoPor, somenteLeitura, embedUrl, execucao } = data as DadosNo;
   const seed = useMemo(() => seedDoId(id), [id]);
   const padrao = tamanhoDe(forma);
   // Durante a primeira medição o React Flow pode entregar 0. Usar esse valor
@@ -48,6 +56,10 @@ function Componente({ id, data, selected, width, height }: NodeProps) {
   const largura = width && width > 0 ? width : padrao.largura;
   const altura = height && height > 0 ? height : padrao.altura;
   const cores = useCores();
+  const embed = urlDoEmbed(embedUrl);
+  // Fantasma não é um nó do projeto, então nunca é tarefa. `?? "pendente"` só cobre dado
+  // antigo: o servidor já normaliza tarefa sem estado desde a migração 007.
+  const estadoTarefa = execucao?.tarefa && !fantasma ? (execucao.estado ?? "pendente") : null;
 
   // Depende so do que muda a forma. Arrastar move por transform CSS e nao re-desenha.
   const tracos = useMemo(
@@ -79,17 +91,43 @@ function Componente({ id, data, selected, width, height }: NodeProps) {
         keepAspectRatio
         color={cor}
       />
+      {/* Selo acima da forma: não repinta o traço, que continua dizendo a categoria e o
+          erro de esquema. Glifo + texto + cor, para o estado sobreviver ao cinza. */}
+      {estadoTarefa ? (
+        <span
+          className="selo-execucao"
+          style={{ color: corDeExecucao(estadoTarefa, cores, cores.traco) }}
+          title={`tarefa ${ROTULO_EXECUCAO[estadoTarefa]}`}
+        >
+          <span aria-hidden="true">{GLIFO_EXECUCAO[estadoTarefa]}</span> {ROTULO_EXECUCAO[estadoTarefa]}
+        </span>
+      ) : null}
       <div style={{ position: "relative", width: largura, height: altura }}>
         {/* Um handle por lado. Com connectionMode Loose o React Flow deixa puxar e soltar
             em qualquer um deles, e a aresta flutuante escolhe sozinha por onde sair. */}
         {LADOS.map((lado) => (
           <Handle key={lado} id={lado} type="source" position={lado} className="lado" />
         ))}
-        <svg width={largura} height={altura} style={{ position: "absolute", inset: 0 }}>
-          {tracos.map((t, i) => (
-            <path key={i} d={t.d} stroke={t.stroke} fill={t.fill} strokeWidth={t.strokeWidth} strokeDasharray={t.strokeLineDash?.join(" ")} />
-          ))}
-        </svg>
+        {embed && !fantasma && !erro ? (
+          <iframe
+            className="nodrag nopan"
+            src={embed}
+            title={`conteúdo incorporado: ${titulo}`}
+            // Continua isolado do Graphdown por origem cruzada; `allow-same-origin` é
+            // necessário para players como o YouTube usarem armazenamento e iniciarem.
+            sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            style={{ position: "absolute", inset: 3, display: "block", width: "calc(100% - 6px)", height: "calc(100% - 6px)", border: `2px solid ${cor}`, borderRadius: 4, background: "transparent" }}
+          />
+        ) : (
+          <svg width={largura} height={altura} style={{ position: "absolute", inset: 0 }}>
+            {tracos.map((t, i) => (
+              <path key={i} d={t.d} stroke={t.stroke} fill={t.fill} strokeWidth={t.strokeWidth} strokeDasharray={t.strokeLineDash?.join(" ")} />
+            ))}
+          </svg>
+        )}
       </div>
       <div
         style={{

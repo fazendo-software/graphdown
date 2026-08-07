@@ -1,6 +1,34 @@
 import type { Pool, PoolClient } from "pg";
-import type { Aresta, Categoria, CategoriaComId, Layout, No, ResultadoBusca } from "../core/tipos.ts";
+import type { Aresta, Categoria, CategoriaComId, EstadoExecucao, Layout, No, ResultadoBusca } from "../core/tipos.ts";
 import { camposPadrao, idDeTitulo, validarCampos } from "../core/categoria.ts";
+
+/** Uma lista só: listagem, detalhe, update e delete devolvem o mesmo nó, senão o
+ * `no-mudou` sai com menos campos que o snapshot do grafo. */
+const COLUNAS_NO = "id, titulo, categoria_id, campos, versao, erro, eh_tarefa, estado_execucao";
+
+type LinhaNo = {
+  id: string;
+  titulo: string;
+  categoria_id: string;
+  campos: Record<string, unknown>;
+  versao: number;
+  erro: string | null;
+  eh_tarefa: boolean;
+  estado_execucao: EstadoExecucao | null;
+};
+
+/** Duas colunas no banco, um par no contrato: `execucao` viaja junto em toda resposta. */
+function paraNo(linha: LinhaNo): No {
+  return {
+    id: linha.id,
+    titulo: linha.titulo,
+    categoria_id: linha.categoria_id,
+    campos: linha.campos,
+    versao: linha.versao,
+    erro: linha.erro ?? undefined,
+    execucao: { tarefa: linha.eh_tarefa, estado: linha.estado_execucao },
+  };
+}
 
 /**
  * Busca textual no projeto aberto, sobre a coluna gerada `nos.busca_tsv` (título + corpo +
@@ -38,13 +66,13 @@ export async function buscarNos(pool: Pool, projetoId: string, q: string): Promi
 }
 
 export async function listarNos(pool: Pool, projetoId: string): Promise<No[]> {
-  const r = await pool.query<No>(
-    `select id, titulo, categoria_id, campos, versao, erro
+  const r = await pool.query<LinhaNo>(
+    `select ${COLUNAS_NO}
        from nos where projeto_id = $1 and apagado_em is null
        order by criado_em`,
     [projetoId],
   );
-  return r.rows.map((n) => ({ ...n, erro: n.erro ?? undefined }));
+  return r.rows.map(paraNo);
 }
 
 export async function buscarNo(
@@ -52,13 +80,13 @@ export async function buscarNo(
   projetoId: string,
   id: string,
 ): Promise<(No & { corpo: string }) | null> {
-  const r = await pool.query<No & { corpo: string }>(
-    `select id, titulo, categoria_id, campos, corpo, versao, erro
+  const r = await pool.query<LinhaNo & { corpo: string }>(
+    `select ${COLUNAS_NO}, corpo
        from nos where projeto_id = $1 and id = $2 and apagado_em is null`,
     [projetoId, id],
   );
-  const no = r.rows[0];
-  return no ? { ...no, erro: no.erro ?? undefined } : null;
+  const linha = r.rows[0];
+  return linha ? { ...paraNo(linha), corpo: linha.corpo } : null;
 }
 
 /** Só os nós com posição conhecida — nó nunca posicionado fica fora, é o sinal que
@@ -122,39 +150,72 @@ export async function criarNo(
   return { id };
 }
 
-export async function atualizarCampos(
+/** Chave ausente mantém o que já estava — PATCH é parcial também dentro de `execucao`. */
+export type PatchNo = {
+  titulo?: string;
+  campos?: Record<string, unknown>;
+  execucao?: { tarefa?: boolean; estado?: EstadoExecucao | null };
+};
+
+/** Tarefa sem estado começa `pendente`; deixar de ser tarefa limpa o estado. Fica aqui,
+ * no caminho de escrita, para que nenhuma rota consiga gravar o par incoerente. */
+function normalizarExecucao(atual: No["execucao"], patch: PatchNo["execucao"]): No["execucao"] {
+  if (!patch) return atual;
+  const tarefa = patch.tarefa ?? atual.tarefa;
+  const estado = patch.estado === undefined ? atual.estado : patch.estado;
+  return { tarefa, estado: tarefa ? (estado ?? "pendente") : null };
+}
+
+/**
+ * Título, campos e execução em um único UPDATE: o modal salva os três de uma vez e o
+ * outro cliente não pode ver um estado intermediário nem receber dois `no-mudou`.
+ *
+ * Recebe o nó já lido (a rota precisa dele para achar a categoria) — assim a mesclagem de
+ * `campos` não custa uma segunda consulta.
+ */
+export async function atualizarNo(
   pool: Pool,
   projetoId: string,
   id: string,
-  camposParciais: Record<string, unknown>,
+  patch: PatchNo,
   categoria: Categoria,
 ): Promise<No | null> {
-  const atual = await pool.query<{ campos: Record<string, unknown> }>(
-    "select campos from nos where projeto_id = $1 and id = $2 and apagado_em is null",
-    [projetoId, id],
-  );
-  if (!atual.rows[0]) return null;
-  const campos = { ...atual.rows[0].campos, ...camposParciais };
-  const erro = validarCampos(categoria, campos);
-  const r = await pool.query<No>(
-    `update nos set campos = $3, erro = $4, atualizado_em = now()
-       where projeto_id = $1 and id = $2 and apagado_em is null
-       returning id, titulo, categoria_id, campos, versao, erro`,
-    [projetoId, id, campos, erro ?? null],
-  );
-  const no = r.rows[0];
-  return no ? { ...no, erro: no.erro ?? undefined } : null;
-}
-
-export async function atualizarTitulo(pool: Pool, projetoId: string, id: string, titulo: string): Promise<No | null> {
-  const r = await pool.query<No>(
-    `update nos set titulo = $3, atualizado_em = now()
-       where projeto_id = $1 and id = $2 and apagado_em is null
-       returning id, titulo, categoria_id, campos, versao, erro`,
-    [projetoId, id, titulo],
-  );
-  const no = r.rows[0];
-  return no ? { ...no, erro: no.erro ?? undefined } : null;
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("begin");
+    // O PATCH é parcial: trancar e reler impede que título/campos de uma pessoa restaurem
+    // o estado de execução que outra pessoa acabou de gravar.
+    const lido = await cliente.query<LinhaNo>(
+      `select ${COLUNAS_NO} from nos
+        where projeto_id = $1 and id = $2 and apagado_em is null for update`,
+      [projetoId, id],
+    );
+    if (!lido.rows[0]) {
+      await cliente.query("rollback");
+      return null;
+    }
+    const atual = paraNo(lido.rows[0]);
+    const campos = patch.campos ? { ...atual.campos, ...patch.campos } : atual.campos;
+    // Revalidar só quando `campos` muda: um PATCH de execução não deve apagar nem inventar
+    // o aviso de esquema que já estava registrado.
+    const erro = patch.campos ? validarCampos(categoria, campos) : atual.erro;
+    const execucao = normalizarExecucao(atual.execucao, patch.execucao);
+    const r = await cliente.query<LinhaNo>(
+      `update nos
+          set titulo = $3, campos = $4, erro = $5, eh_tarefa = $6, estado_execucao = $7,
+              atualizado_em = now()
+        where projeto_id = $1 and id = $2 and apagado_em is null
+        returning ${COLUNAS_NO}`,
+      [projetoId, id, patch.titulo ?? atual.titulo, campos, erro ?? null, execucao.tarefa, execucao.estado],
+    );
+    await cliente.query("commit");
+    return paraNo(r.rows[0]);
+  } catch (erro) {
+    await cliente.query("rollback");
+    throw erro;
+  } finally {
+    cliente.release();
+  }
 }
 
 export type ResultadoCorpo =
@@ -210,10 +271,10 @@ export async function apagarNo(
   const cliente: PoolClient = await pool.connect();
   try {
     await cliente.query("begin");
-    const no = await cliente.query<No>(
+    const no = await cliente.query<LinhaNo>(
       `update nos set apagado_em = now()
          where projeto_id = $1 and id = $2 and apagado_em is null
-         returning id, titulo, categoria_id, campos, versao, erro`,
+         returning ${COLUNAS_NO}`,
       [projetoId, id],
     );
     if (!no.rows[0]) {
@@ -228,7 +289,7 @@ export async function apagarNo(
     );
     await cliente.query("commit");
     return {
-      no: { ...no.rows[0], erro: no.rows[0].erro ?? undefined },
+      no: paraNo(no.rows[0]),
       arestasApagadas: arestas.rows.map((a) => ({ ...a, quando: a.quando ?? undefined, tipo: a.tipo ?? undefined })),
     };
   } catch (erro) {

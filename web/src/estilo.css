@@ -89,6 +89,56 @@ body { margin: 0; background: var(--fundo); color: var(--texto); }
   margin: 20px 0 0; padding-top: 12px; border-top: 1px solid var(--borda-2);
   font-size: 13px; font-weight: 600; color: var(--texto-2);
 }
+
+/* Os diálogos usam a mesma casca: cabeçalho e ações ficam visíveis ao rolar. */
+.modal-objeto, .modal-aresta, .dialogo {
+  padding: 0; overflow: hidden; display: flex; flex-direction: column;
+}
+.modal-fundo:has(.modal-objeto) { justify-content: flex-end; }
+.modal-objeto {
+  width: min(720px, 100vw); height: 100dvh; max-height: 100dvh; border-radius: 10px 0 0 10px;
+}
+.modal-aresta { width: min(680px, 94vw); max-height: min(720px, 88vh); }
+.dialogo { width: min(460px, 92vw); max-height: min(520px, 88vh); }
+.modal-objeto .modal-fechar, .modal-aresta .modal-fechar, .dialogo .modal-fechar { position: static; flex: none; }
+.modal-objeto .modal-cabecalho, .modal-objeto .modal-rodape { flex: none; }
+.modal-objeto .modal-corpo { flex: 1 1 auto; min-height: 0; }
+.modal-cabecalho {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 20px 24px 16px; border-bottom: 1px solid var(--borda-2); background: var(--fundo-2);
+}
+.modal-cabecalho h2 { margin: 2px 0 0; padding: 0; font-size: 20px; }
+.modal-sobretitulo { margin: 0; color: var(--texto-3); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.modal-ferramentas { display: flex; align-items: center; gap: 4px; }
+.modal-objeto .botao-avancado { margin: 0; }
+.modal-corpo { overflow: auto; padding: 20px 24px; }
+.modal-secao-objeto + .modal-secao-objeto { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--borda-2); }
+.modal-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+.modal-secao-titulo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.modal-secao-titulo div { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.modal-secao-titulo span { color: var(--texto-3); font-size: 12px; }
+.modal-secao-detalhe .detalhe {
+  min-height: 120px; padding: 12px; border: 1px solid var(--borda-2); border-radius: 8px;
+  background: var(--fundo-2); line-height: 1.5;
+}
+.modal-secao-detalhe .detalhe > :first-child { margin-top: 0; }
+.modal-secao-detalhe .detalhe > :last-child { margin-bottom: 0; }
+.modal-acoes-internas { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.modal-objeto .avancado { margin-top: 20px; background: var(--fundo-2); }
+.modal-rodape {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 14px 24px; border-top: 1px solid var(--borda-2); background: var(--fundo);
+}
+.modal-rodape > button:last-child { margin-left: auto; background: var(--acento); border-color: var(--acento); color: var(--acento-texto); }
+.modal-rodape > button.perigo:last-child { background: var(--fundo); border-color: var(--perigo-borda); color: var(--perigo); }
+.dialogo-mensagem { margin: 0; line-height: 1.5; }
+
+@media (max-width: 560px) {
+  .modal-cabecalho, .modal-corpo, .modal-rodape { padding-left: 16px; padding-right: 16px; }
+  .modal-campos { grid-template-columns: 1fr; }
+  .modal-rodape { align-items: stretch; flex-wrap: wrap; }
+  .modal-rodape > button { flex: 1; }
+}
 .topo {
   display: flex; gap: 10px; align-items: center; padding: 0 10px;
   background: var(--fundo-2); border-bottom: 1px solid var(--borda-2);
@@ -160,39 +210,95 @@ body { margin: 0; background: var(--fundo); color: var(--texto); }
 .paleta-item:hover { border-color: var(--borda); background: var(--fundo-2); }
 .paleta-item:active { cursor: grabbing; }
 
-.roda-fundo { position: fixed; inset: 0; z-index: 8; }
-.roda { position: absolute; width: 0; height: 0; }
+.roda-fundo { position: fixed; inset: 0; z-index: 8; background: color-mix(in srgb, var(--fundo) 12%, transparent); }
+.roda { position: absolute; width: 0; height: 0; isolation: isolate; }
+.roda::before {
+  content: ""; position: absolute; left: 0; top: 0; z-index: -1; width: 180px; height: 180px;
+  transform: translate(-50%, -50%); border-radius: 50%; background: var(--fundo-2); opacity: .78;
+  box-shadow: 0 0 0 1px var(--borda-2), 0 12px 42px var(--sombra-2);
+}
 .roda-item {
   position: absolute; left: 0; top: 0;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  width: 64px; padding: 6px 2px; border: 1px solid var(--borda); border-radius: 10px;
-  background: var(--fundo); box-shadow: 0 2px 8px var(--sombra-2);
-  font: inherit; font-size: 10px; color: var(--texto-2); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  width: 88px; min-height: 76px; padding: 7px 4px; box-sizing: border-box;
+  border: 1px solid var(--borda-2); border-radius: 14px; background: var(--fundo);
+  box-shadow: 0 6px 18px var(--sombra-2); font: inherit; font-size: 10px; line-height: 1.15;
+  color: var(--texto-2); cursor: pointer; text-align: center; overflow-wrap: anywhere;
 }
-.roda-item:hover { border-color: var(--acento); color: var(--acento); }
+.roda-item svg { flex: none; }
+.roda-item:hover, .roda-item:focus-visible { border-color: var(--acento); background: var(--fundo-2); color: var(--acento); }
+.roda-icone { display: grid; place-items: center; width: 42px; height: 28px; font-size: 26px; line-height: 1; }
 
 /* Anel interno da roda: categorias. O centro é zona morta — soltar ali cancela. */
 .roda-centro {
-  position: absolute; left: 0; top: 0; width: 26px; height: 26px;
+  position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 58px; height: 58px;
   transform: translate(-50%, -50%);
-  border: 1px dashed var(--borda); border-radius: 50%; background: var(--fundo);
+  border: 1px solid var(--acento); border-radius: 50%; background: var(--fundo); color: var(--acento);
+  box-shadow: 0 4px 14px var(--sombra-2); line-height: 1;
 }
+.roda-centro b { font-size: 24px; font-weight: 400; }
+.roda-centro small { margin-top: 1px; color: var(--texto-3); font-size: 9px; }
 .roda-cat {
   position: absolute; left: 0; top: 0;
-  padding: 6px 12px; border: 1px solid var(--borda); border-radius: 999px;
-  background: var(--fundo); box-shadow: 0 2px 8px var(--sombra-2);
-  font: inherit; font-size: 11px; white-space: nowrap; color: var(--texto-2);
+  padding: 7px 13px; border: 1px solid var(--borda-2); border-radius: 999px;
+  background: var(--fundo); box-shadow: 0 4px 12px var(--sombra-2);
+  font: inherit; font-size: 11px; font-weight: 600; white-space: nowrap; color: var(--texto-2);
   cursor: pointer;
 }
+.roda-cat[data-especial] { border-style: dashed; }
 .roda-cat:hover, .roda-cat[aria-pressed="true"] {
   background: var(--acento); border-color: var(--acento); color: var(--acento-texto);
 }
+
+/* O pontilhado percorre o `d` da aresta do source ao target, sem alterar o traço rough
+   nem disputar clique com a relação. Cada id entra numa fase própria para o fluxo não
+   parecer uma animação única atravessando todo o grafo. */
+.aresta-fluxo {
+  fill: none; stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 2px 16px;
+  opacity: .9; pointer-events: none; animation: fluxo-aresta 1.6s linear infinite;
+}
+@keyframes fluxo-aresta { to { stroke-dashoffset: -18px; } }
+/* Sem deslocamento a camada vira um pontilhado parado — mas a cor É a informação de
+   estado, então ela sobe de opacidade em vez de quase sumir. */
+@media (prefers-reduced-motion: reduce) { .aresta-fluxo { animation: none; opacity: .6; } }
+
+/* Selo de execução do nó: fica acima da forma, sem repintar o traço (que continua
+   dizendo categoria e erro de esquema). Glifo + texto + cor. */
+.selo-execucao {
+  position: absolute; top: -13px; left: 4px; z-index: 1;
+  display: inline-flex; gap: 4px; align-items: center;
+  padding: 1px 7px; border: 1px solid currentColor; border-radius: 999px;
+  background: var(--fundo); font-size: 10px; line-height: 1.5; white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Resumo do projeto e badges de fluxo, no topo da seção "grafo". */
+.progresso-projeto { padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+.progresso-linha { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.progresso-linha strong { color: var(--texto-2); font-weight: 600; }
+.link-fluxo {
+  flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--texto);
+  font-size: 12px; text-align: left; text-overflow: ellipsis; overflow: hidden;
+  white-space: nowrap; cursor: pointer;
+}
+.link-fluxo:hover { color: var(--acento); }
+.badge-progresso { display: inline-flex; align-items: center; gap: 6px; color: var(--texto-2); font-size: 11px; white-space: nowrap; }
+.badge-progresso.vazio { color: var(--texto-4); font-style: italic; }
+.barra-progresso { width: 44px; height: 5px; border-radius: 999px; background: var(--borda-2); overflow: hidden; }
+.barra-progresso span { display: block; height: 100%; border-radius: 999px; background: var(--acento); }
+.dica-progresso { margin: 0; color: var(--texto-3); font-size: 11px; }
+
+/* Execução no modal: caixa e seletor lado a lado, sem virar mais um "campo da categoria". */
+.secao-execucao .linha-execucao { display: flex; align-items: center; gap: 8px; margin: 0; }
+.secao-execucao .linha-execucao input { width: auto; }
+.secao-execucao .dica { margin: 6px 0 0; }
 
 /* Dedo não tem hover nem precisão de 9px: alvos crescem e o que dependia de hover
    passa a ficar sempre visível. 44px é o mínimo recomendado pela WCAG. */
 @media (pointer: coarse) {
   .modos button, .topo button.tema { padding: 12px 16px; font-size: 14px; }
-  .roda-item { width: 84px; padding: 12px 4px; font-size: 12px; }
+  .roda-item { width: 96px; min-height: 88px; padding: 12px 4px; font-size: 12px; }
   .roda-cat { padding: 12px 16px; font-size: 13px; }
   .react-flow__handle.lado { width: 16px; height: 16px; opacity: 1; }
   .modal button { padding: 12px 18px; }
@@ -365,6 +471,15 @@ body { margin: 0; background: var(--fundo); color: var(--texto); }
 }
 .paleta-setas .paleta-item { cursor: pointer; }
 .paleta-setas svg { flex: none; }
+
+/* Setas livres são objetos do canvas, não relações. O SVG fica sem caixa visível até
+   selecionar; os círculos cheios são vértices e os vazados promovem uma nova dobra. */
+.seta-livre { color: var(--texto-2); }
+.seta-livre svg { overflow: visible; display: block; }
+.seta-livre.selecionada .traco-seta-livre { color: var(--acento); }
+.controle-seta { cursor: move; stroke: var(--fundo); stroke-width: 1.5px; }
+.controle-seta.vertice { fill: var(--acento); }
+.controle-seta.meio { fill: var(--fundo); stroke: var(--acento); stroke-width: 2px; }
 
 /* Outline: categoria > tipo > nós. */
 .lateral .subgrupo { margin-left: 6px; }

@@ -17,14 +17,17 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import { congelarRecorte } from "../../core/exportacao.ts";
-import type { MsgServidor, Nota, Papel, Posicao, Projeto, RecorteExportacao, Retangulo, Usuario } from "../../core/tipos.ts";
+import type { MsgServidor, Nota, ObjetoSeta, Papel, Posicao, Projeto, RecorteExportacao, Retangulo, Usuario } from "../../core/tipos.ts";
 import { apiProjeto, type ArestaComId } from "./api.ts";
 import { conectarWS, type ConexaoWS } from "./ws.ts";
 import { aplicarDiffRender, preservarDimensoes, type RenderState } from "./diffGrafo.ts";
+import { progressoDoRender } from "./progressoRender.ts";
 import { NoProcesso, type DadosNo } from "./NoProcesso.tsx";
 import { NotaNo, type DadosNota } from "./NotaNo.tsx";
+import { SetaLivreNo, type DadosSetaLivre } from "./SetaLivreNo.tsx";
 import { ArestaRough } from "./ArestaRough.tsx";
 import { RodaFormas, type CategoriaRoda } from "./RodaFormas.tsx";
+import { conterCentroRoda } from "./rodaGeometria.ts";
 import { BarraLateral, type Armado, type ItemGrafo } from "./BarraLateral.tsx";
 import { MenuProjeto } from "./MenuProjeto.tsx";
 import { completarLayout } from "./layoutAuto.ts";
@@ -35,6 +38,7 @@ import { Modal } from "./Modal.tsx";
 import { ModalAresta } from "./ModalAresta.tsx";
 import { DialogoConfirmacao, DialogoTexto } from "./Dialogos.tsx";
 import { arestasInternas, deveProcessarAtalhoCanvas, posicaoColada } from "./interacoesCanvas.ts";
+import { ehTipoSetaLivre, pontosIniciais, TIPOS_SETA_LIVRE, transladarPontos, type TipoSetaLivre } from "./setasLivres.ts";
 import {
   categoriaDoNo,
   edgeDeAresta,
@@ -44,17 +48,19 @@ import {
   montarTudo,
   nodeDeFantasma,
   nodeDeNota,
+  nodeDeSetaLivre,
   nodeDeReal,
   tiposDeForma,
   type Catalogo,
   type DadosAresta,
 } from "./grafoRender.ts";
 
-const tiposNo = { processo: NoProcesso, nota: NotaNo };
+const tiposNo = { processo: NoProcesso, nota: NotaNo, "seta-livre": SetaLivreNo };
 const tiposAresta = { rough: ArestaRough };
 const TIPO_ARRASTADO = "application/grapydown-tipo";
 /** Item da paleta que não é um tipo da categoria: cria nota em vez de nó. */
 const TIPO_NOTA = "nota";
+const TIPO_SETA_LIVRE = "seta-livre";
 
 type Props = {
   projetoId: string;
@@ -67,7 +73,8 @@ type Props = {
 
 type ItemCopiado =
   | { kind: "no"; id: string; titulo: string; categoriaId: string; campos: Record<string, unknown>; x: number; y: number }
-  | { kind: "nota"; id: string; conteudo: string; x: number; y: number };
+  | { kind: "nota"; id: string; conteudo: string; x: number; y: number }
+  | { kind: "seta-livre"; id: string; tipo: TipoSetaLivre; pontos: Posicao[] };
 
 type ArestaCopiada = { de: string; para: string; tipo?: string; quando?: string; campos: Record<string, unknown> };
 type AreaTransferencia = { itens: ItemCopiado[]; arestas: ArestaCopiada[] };
@@ -129,6 +136,9 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   // ela carrega a estrutura do grafo (inclusive as relações), não um texto serializado.
   // Portanto não sobrevive a recarga nem pode ser colada em outro aplicativo.
   const areaTransferencia = useRef<AreaTransferencia | null>(null);
+  // `applyNodeChanges` já move a caixa visual em cada frame. Guardamos a origem separada
+  // para persistir o delta total nos pontos quando o arraste termina, sem a seta saltar.
+  const inicioArrasteSeta = useRef(new Map<string, Posicao>());
   const copiarRef = useRef<() => void>(() => undefined);
   const colarRef = useRef<() => void>(() => undefined);
   const cortarRef = useRef<() => void>(() => undefined);
@@ -160,6 +170,16 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     (n: Nota) => nodeDeNota(n, somenteLeitura, salvarNota),
     [somenteLeitura, salvarNota],
   );
+  const salvarSetaLivre = useCallback(
+    (id: string, pontos: ObjetoSeta["pontos"]) => {
+      api.patchObjetoSeta(id, { pontos }).catch((e: Error) => setFalha(e.message));
+    },
+    [api],
+  );
+  const construirSetaLivre = useCallback(
+    (seta: ObjetoSeta) => nodeDeSetaLivre(seta, somenteLeitura, salvarSetaLivre),
+    [somenteLeitura, salvarSetaLivre],
+  );
 
   async function carregar() {
     if (!wsRef.current) return;
@@ -178,7 +198,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
       const corPadrao = PALETA[tema].aresta;
       setRender((anterior) => {
         const tamanhos = new Map(anterior.nos.map((no) => [no.id, no]));
-        const proximo = montarTudo(g, cat, layoutCompleto, corPadrao, somenteLeitura, salvarNota);
+        const proximo = montarTudo(g, cat, layoutCompleto, corPadrao, somenteLeitura, salvarNota, salvarSetaLivre);
         return { ...proximo, nos: proximo.nos.map((no) => preservarDimensoes(no, tamanhos.get(no.id))) };
       });
       setFalha(null);
@@ -228,6 +248,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
           noFantasma: nodeDeFantasma,
           aresta: (a) => edgeDeAresta(a, catalogo, corPadrao),
           nota: construirNota,
+          seta: construirSetaLivre,
         },
       }),
     );
@@ -298,7 +319,8 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
         if (!deveProcessarAtalhoCanvas(canvasAtivo.current, editavel, Boolean(selecao && !selecao.isCollapsed))) return;
         if (e.key.toLowerCase() === "a") {
           // Seleção do canvas, não seleção de texto da página: Ctrl/Cmd+A marca
-          // apenas nós e notas, mantendo as arestas fora da seleção.
+          // Todos os objetos do canvas (nós, notas e setas livres), mantendo as relações
+          // semânticas fora da seleção.
           e.preventDefault();
           setRender((prev) => ({
             ...prev,
@@ -327,6 +349,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   }, []);
 
   const ehNota = (id: string) => render.nos.find((n) => n.id === id)?.type === "nota";
+  const ehSetaLivre = (id: string) => render.nos.find((n) => n.id === id)?.type === "seta-livre";
 
   const MS_SEGURAR = 220;
   const TOLERANCIA_PX = 6;
@@ -340,8 +363,8 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   function abrirRoda(clientX: number, clientY: number, gesto: "segurar" | "clique") {
     if (somenteLeitura || !rf.current || categoriasDaRoda.length === 0) return;
     setRoda({
-      x: clientX,
-      y: clientY,
+      x: conterCentroRoda(clientX, window.innerWidth),
+      y: conterCentroRoda(clientY, window.innerHeight),
       alvo: rf.current.screenToFlowPosition({ x: clientX, y: clientY }),
       gesto,
     });
@@ -384,6 +407,22 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
         if (m.dragging === false) api.patchNota(m.id, { x, y }).catch((e: Error) => setFalha(e.message));
         continue;
       }
+      if (ehSetaLivre(m.id)) {
+        const anterior = render.nos.find((n) => n.id === m.id);
+        if (m.dragging && anterior && !inicioArrasteSeta.current.has(m.id)) {
+          inicioArrasteSeta.current.set(m.id, { ...anterior.position });
+        }
+        if (m.dragging === false) {
+          const dados = anterior?.data as DadosSetaLivre | undefined;
+          const inicio = inicioArrasteSeta.current.get(m.id) ?? anterior?.position;
+          inicioArrasteSeta.current.delete(m.id);
+          if (inicio && dados) {
+            const pontos = transladarPontos(dados.pontos, x - inicio.x, y - inicio.y);
+            api.patchObjetoSeta(m.id, { pontos }).catch((e: Error) => setFalha(e.message));
+          }
+        }
+        continue;
+      }
       if (m.dragging) wsRef.current?.enviarArrastando(m.id, m.position.x, m.position.y);
       else if (m.dragging === false) wsRef.current?.enviar({ t: "soltou", no: m.id, x, y });
     }
@@ -408,11 +447,15 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   async function aoApagar({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) {
     if (somenteLeitura) return;
     const notas = nodes.filter((n) => n.type === "nota").map((n) => n.id);
-    const ids = nodes.filter((n) => n.type !== "nota" && !(n.data as DadosNo).fantasma).map((n) => n.id);
-    if (ids.length + notas.length > 0) {
+    const setasLivres = nodes.filter((n) => n.type === "seta-livre").map((n) => n.id);
+    const ids = nodes
+      .filter((n) => n.type !== "nota" && n.type !== "seta-livre" && !(n.data as DadosNo).fantasma)
+      .map((n) => n.id);
+    if (ids.length + notas.length + setasLivres.length > 0) {
       const partes = [
         ids.length === 1 ? `"${ids[0]}"` : ids.length > 1 ? `${ids.length} passos` : "",
         notas.length === 1 ? "1 nota" : notas.length > 1 ? `${notas.length} notas` : "",
+        setasLivres.length === 1 ? "1 objeto de seta" : setasLivres.length > 1 ? `${setasLivres.length} objetos de seta` : "",
       ].filter(Boolean);
       if (!(await pedirConfirmacao(`Apagar ${partes.join(" e ")}?`))) {
         await carregar();
@@ -421,6 +464,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     }
     try {
       for (const id of notas) await api.apagarNota(id);
+      for (const id of setasLivres) await api.apagarObjetoSeta(id);
       for (const id of ids) await api.apagarNo(id);
       for (const e of edges) {
         // Apagar um nó já soft-deleta toda aresta em que ele é origem OU destino
@@ -447,6 +491,9 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             x: node.position.x,
             y: node.position.y,
           });
+        } else if (node.type === "seta-livre") {
+          const dados = node.data as DadosSetaLivre;
+          itens.push({ kind: "seta-livre", id: node.id, tipo: dados.tipo, pontos: dados.pontos });
         } else if (!(node.data as DadosNo).fantasma) {
           const detalhe = await api.no(node.id);
           itens.push({
@@ -482,6 +529,11 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     const novos = new Map<string, string>();
     try {
       for (const item of copia.itens) {
+        if (item.kind === "seta-livre") {
+          const seta = await api.criarObjetoSeta(item.tipo, transladarPontos(item.pontos, deslocamento, deslocamento));
+          novos.set(item.id, seta.id);
+          continue;
+        }
         const { x, y } = posicaoColada(item, deslocamento);
         if (item.kind === "nota") {
           const nota = await api.criarNota(item.conteudo, x, y);
@@ -526,6 +578,17 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
         // O broadcast "nota-criada" volta pra própria sala e monta o nó — não é preciso
         // inserir localmente antes.
         await api.criarNota("", Math.round(alvo.x), Math.round(alvo.y));
+      } catch (e) {
+        setFalha((e as Error).message);
+      }
+      return;
+    }
+    if ("variante" in alvoArmado) {
+      try {
+        await api.criarObjetoSeta(alvoArmado.variante, pontosIniciais(alvoArmado.variante, {
+          x: Math.round(alvo.x),
+          y: Math.round(alvo.y),
+        }));
       } catch (e) {
         setFalha((e as Error).message);
       }
@@ -587,14 +650,18 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   // A roda passou a ter dois anéis: categoria por dentro, objetos dela por fora. Por isso
   // ela deixou de mostrar só a principal — categoria vazia fica fora para não virar setor
   // morto no anel interno.
-  const categoriasDaRoda: CategoriaRoda[] = (catalogo?.categorias ?? [])
-    .map((c) => ({
-      id: c.id,
-      nome: c.nome,
-      tipos: tiposDeForma(c),
-      formaDoTipo: (t: string) => formaDoTipo(c, t),
-    }))
-    .filter((c) => c.tipos.length > 0);
+  const categoriasDaRoda: CategoriaRoda[] = [
+    ...(catalogo?.categorias ?? [])
+      .map((c) => ({
+        id: c.id,
+        nome: c.nome,
+        tipos: tiposDeForma(c),
+        formaDoTipo: (t: string) => formaDoTipo(c, t),
+      }))
+      .filter((c) => c.tipos.length > 0),
+    { id: "nota", nome: "anotação", tipos: [TIPO_NOTA], formaDoTipo: () => "", especial: "nota" },
+    { id: "setas-livres", nome: "linhas", tipos: [...TIPOS_SETA_LIVRE], formaDoTipo: () => "", especial: "seta-livre" },
+  ];
   const meuId = usuario.id;
 
   // Barra lateral e canvas leem a mesma lista de nós — nada de segunda fonte da verdade.
@@ -606,9 +673,18 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
       tipo: (n.data as DadosNo).tipo ?? "",
       categoria: (n.data as DadosNo).categoria ?? "",
     }));
+  // Derivado do mesmo render: cada `no-mudou` já reescreveu o nó em memória, então o
+  // resumo e os badges acompanham sem nova requisição.
+  const progresso = progressoDoRender(render);
   const notas: Nota[] = render.nos
     .filter((n) => n.type === "nota")
     .map((n) => ({ id: n.id, conteudo: (n.data as DadosNota).conteudo, x: n.position.x, y: n.position.y }));
+  const setasLivres: ObjetoSeta[] = render.nos
+    .filter((n) => n.type === "seta-livre")
+    .map((n) => {
+      const dados = n.data as DadosSetaLivre;
+      return { id: n.id, tipo: dados.tipo, pontos: dados.pontos };
+    });
 
   const proximoTema: Record<Preferencia, Preferencia> = { sistema: "claro", claro: "escuro", escuro: "sistema" };
   const rotuloTema = { sistema: "🖥️", claro: "☀️", escuro: "🌙" };
@@ -619,6 +695,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     const altura = no.height ?? no.measured?.height;
     if (largura && altura) return { largura, altura };
     if (no.type === "nota") return { largura: 176, altura: 64 };
+    if (no.type === "seta-livre") return { largura: no.width ?? 96, altura: no.height ?? 96 };
     const tamanho = tamanhoDe((no.data as DadosNo).forma);
     return { largura: tamanho.largura, altura: tamanho.altura };
   }
@@ -626,13 +703,14 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
   /** A viewport e os resize locais são copiados junto com os ids, antes do GET do snapshot. */
   function capturarExportacao(escopo: "projeto" | "selecao-area"): CapturaExportacao {
     const itens = render.nos.filter((no) => no.type === "nota" || !(no.data as DadosNo).fantasma);
-    const limites: { nos: Record<string, Retangulo>; notas: Record<string, Retangulo> } = { nos: {}, notas: {} };
+    const limites: { nos: Record<string, Retangulo>; notas: Record<string, Retangulo>; setas: Record<string, Retangulo> } = { nos: {}, notas: {}, setas: {} };
     const dimensoesLocais: CapturaExportacao["dimensoesLocais"] = {};
     for (const no of itens) {
       const dimensao = dimensaoDoNo(no);
       const limite = { x: no.position.x, y: no.position.y, ...dimensao };
       dimensoesLocais[no.id] = dimensao;
       if (no.type === "nota") limites.notas[no.id] = limite;
+      else if (no.type === "seta-livre") limites.setas[no.id] = limite;
       else limites.nos[no.id] = limite;
     }
     const elemento = document.querySelector<HTMLElement>(".canvas-grafo");
@@ -640,35 +718,42 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
     const inicio = caixa && rf.current ? rf.current.screenToFlowPosition({ x: caixa.left, y: caixa.top }) : { x: 0, y: 0 };
     const fim = caixa && rf.current ? rf.current.screenToFlowPosition({ x: caixa.right, y: caixa.bottom }) : { x: 0, y: 0 };
     const area = { x: inicio.x, y: inicio.y, largura: Math.max(0, fim.x - inicio.x), altura: Math.max(0, fim.y - inicio.y) };
-    const nosSelecionados = itens.filter((no) => no.selected && no.type !== "nota");
+    const nosSelecionados = itens.filter((no) => no.selected && no.type !== "nota" && no.type !== "seta-livre");
     const notasSelecionadas = itens.filter((no) => no.selected && no.type === "nota");
-    const haSelecao = nosSelecionados.length + notasSelecionadas.length > 0;
+    const setasSelecionadas = itens.filter((no) => no.selected && no.type === "seta-livre");
+    const haSelecao = nosSelecionados.length + notasSelecionadas.length + setasSelecionadas.length > 0;
     const recorte: RecorteExportacao = escopo === "projeto"
       ? { tipo: "projeto" }
       : haSelecao
-        ? { tipo: "selecao", nos: nosSelecionados.map((no) => no.id), notas: notasSelecionadas.map((no) => no.id), area }
+        ? { tipo: "selecao", nos: nosSelecionados.map((no) => no.id), notas: notasSelecionadas.map((no) => no.id), setas: setasSelecionadas.map((no) => no.id), area }
         : { tipo: "area", area, limites };
     const dentro = (limite: Retangulo) => limite.x <= area.x + area.largura && limite.x + limite.largura >= area.x && limite.y <= area.y + area.altura && limite.y + limite.altura >= area.y;
     const nosDoRecorte = recorte.tipo === "projeto"
-      ? itens.filter((no) => no.type !== "nota")
+      ? itens.filter((no) => no.type !== "nota" && no.type !== "seta-livre")
       : recorte.tipo === "selecao"
-        ? itens.filter((no) => no.type !== "nota" && recorte.nos.includes(no.id))
-        : itens.filter((no) => no.type !== "nota" && dentro(limites.nos[no.id]));
+        ? itens.filter((no) => no.type !== "nota" && no.type !== "seta-livre" && recorte.nos.includes(no.id))
+        : itens.filter((no) => no.type !== "nota" && no.type !== "seta-livre" && dentro(limites.nos[no.id]));
     const notasDoRecorte = recorte.tipo === "projeto"
       ? itens.filter((no) => no.type === "nota")
       : recorte.tipo === "selecao"
         ? itens.filter((no) => no.type === "nota" && recorte.notas.includes(no.id))
         : itens.filter((no) => no.type === "nota" && dentro(limites.notas[no.id]));
+    const setasDoRecorte = recorte.tipo === "projeto"
+      ? itens.filter((no) => no.type === "seta-livre")
+      : recorte.tipo === "selecao"
+        ? itens.filter((no) => no.type === "seta-livre" && recorte.setas.includes(no.id))
+        : itens.filter((no) => no.type === "seta-livre" && dentro(limites.setas[no.id]));
     const ids = new Set(nosDoRecorte.map((no) => no.id));
     const contagens = {
       nos: nosDoRecorte.length,
       notas: notasDoRecorte.length,
+      setas: setasDoRecorte.length,
       arestas: recorte.tipo === "projeto" ? render.arestas.length : render.arestas.filter((aresta) => ids.has(aresta.source) && ids.has(aresta.target)).length,
     };
-    return { recorte: congelarRecorte(recorte), dimensoesLocais, haConteudo: contagens.nos + contagens.notas > 0, haSelecao, contagens };
+    return { recorte: congelarRecorte(recorte), dimensoesLocais, haConteudo: contagens.nos + contagens.notas + contagens.setas > 0, haSelecao, contagens };
   }
 
-  const haSelecaoAtual = render.nos.some((no) => no.selected && (no.type === "nota" || !(no.data as DadosNo).fantasma));
+  const haSelecaoAtual = render.nos.some((no) => no.selected && (no.type === "nota" || no.type === "seta-livre" || !(no.data as DadosNo).fantasma));
 
   return (
     <TemaProvider value={tema}>
@@ -761,12 +846,19 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             catalogo={catalogo}
             somenteLeitura={somenteLeitura}
             itens={itens}
+            progresso={progresso}
             notas={notas}
+            setasLivres={setasLivres}
             armado={armado}
             setaArmada={setaArmada}
             aoArmar={(a) =>
               setArmado((atual) =>
-                atual && atual.tipo === a.tipo && atual.categoriaId === a.categoriaId ? null : a,
+                atual &&
+                atual.tipo === a.tipo &&
+                atual.categoriaId === a.categoriaId &&
+                (!("variante" in atual) || !("variante" in a) || atual.variante === a.variante)
+                  ? null
+                  : a,
               )
             }
             aoArmarSeta={(t) => setSetaArmada((atual) => (atual === t ? null : t))}
@@ -806,7 +898,7 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             zoomOnPinch
             onNodeClick={(_, no) => {
               setExportarAberto(false);
-              if (no.type === "nota") return;
+              if (no.type === "nota" || no.type === "seta-livre") return;
               setAberto((no.data as DadosNo).fantasma ? null : no.id);
             }}
             onEdgeClick={(_, e) => {
@@ -845,6 +937,16 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
               if (somenteLeitura) return;
               const tipo = e.dataTransfer.getData(TIPO_ARRASTADO);
               if (!tipo || !rf.current || !catalogo) return;
+              const varianteSeta = tipo.startsWith(`${TIPO_SETA_LIVRE}:`)
+                ? tipo.slice(TIPO_SETA_LIVRE.length + 1)
+                : null;
+              if (varianteSeta && ehTipoSetaLivre(varianteSeta)) {
+                void criar(
+                  { categoriaId: null, tipo: "seta-livre", variante: varianteSeta },
+                  rf.current.screenToFlowPosition({ x: e.clientX, y: e.clientY }),
+                );
+                return;
+              }
               // O dataTransfer só carrega o tipo; a categoria é a primeira que o declara.
               const dono =
                 tipo === TIPO_NOTA
@@ -861,7 +963,13 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             <Background />
             <Controls />
             {/* Nota não tem `cor` no data (é DadosNota) — cai no amarelo do post-it. */}
-            <MiniMap pannable zoomable nodeColor={(n) => (n.type === "nota" ? "#facc15" : (n.data as DadosNo).cor)} />
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={(n) =>
+                n.type === "nota" ? "#facc15" : n.type === "seta-livre" ? "#71717a" : (n.data as DadosNo).cor
+              }
+            />
           </ReactFlow>
         </div>
 
@@ -871,9 +979,15 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             y={roda.y}
             categorias={categoriasDaRoda}
             gesto={roda.gesto}
-            aoEscolher={(categoriaId, tipo) => {
+            aoEscolher={(categoriaId, tipo, especial) => {
               setRoda(null);
-              void criar({ categoriaId, tipo }, roda.alvo);
+              if (especial === "nota") {
+                void criar({ categoriaId: null, tipo: TIPO_NOTA }, roda.alvo);
+              } else if (especial === "seta-livre" && ehTipoSetaLivre(tipo)) {
+                void criar({ categoriaId: null, tipo: TIPO_SETA_LIVRE, variante: tipo }, roda.alvo);
+              } else {
+                void criar({ categoriaId, tipo }, roda.alvo);
+              }
             }}
             aoFechar={() => setRoda(null)}
           />

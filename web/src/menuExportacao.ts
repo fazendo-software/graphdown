@@ -1,6 +1,6 @@
 export type EscopoMenuExportacao = "projeto" | "selecao-area";
 export type FormatoExportacao = "png" | "pdf" | "md" | "md-rfc";
-export type ContagensExportacao = { nos: number; notas: number; arestas: number };
+export type ContagensExportacao = { nos: number; notas: number; setas: number; arestas: number };
 
 export function nomeArquivoExportacao(
   projeto: string,
@@ -25,8 +25,9 @@ export function textoDoRecorte(escopo: EscopoMenuExportacao, haSelecao: boolean)
   return haSelecao ? "seleção atual" : "área atualmente visível";
 }
 
-export function resumoContagens({ nos, notas, arestas }: ContagensExportacao): string {
-  return `${nos} ${nos === 1 ? "objeto" : "objetos"}, ${notas} ${notas === 1 ? "nota" : "notas"} e ${arestas} ${arestas === 1 ? "relação" : "relações"}`;
+export function resumoContagens({ nos, notas, setas, arestas }: ContagensExportacao): string {
+  const objetos = nos + setas;
+  return `${objetos} ${objetos === 1 ? "objeto" : "objetos"}, ${notas} ${notas === 1 ? "nota" : "notas"} e ${arestas} ${arestas === 1 ? "relação" : "relações"}`;
 }
 
 /** Erros de conectividade do browser não são informação acionável para quem exporta. */

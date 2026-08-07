@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { extname, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
-import type { Papel } from "../core/tipos.ts";
+import type { EstadoExecucao, Papel, Posicao } from "../core/tipos.ts";
+import { ESTADOS_EXECUCAO } from "../core/tipos.ts";
+import { ehTipoObjetoSeta, pontosObjetoSetaValidos } from "../core/objetosSeta.ts";
 import {
   apagarSessao,
   criarSessao,
@@ -20,9 +22,10 @@ import { listarCategorias, buscarCategoriaPorId, categoriaDoProjeto } from "./ca
 import { apagarProjeto, buscarProjeto, criarProjeto, listarProjetos } from "./projetos.ts";
 import { montarGrafo } from "./grafo.ts";
 import { montarExportacao } from "./exportacao.ts";
-import { apagarNo, atualizarCampos, atualizarCorpo, atualizarTitulo, buscarNo, buscarNos, criarNo } from "./nos.ts";
+import { apagarNo, atualizarCorpo, atualizarNo, buscarNo, buscarNos, criarNo, type PatchNo } from "./nos.ts";
 import { apagarAresta, atualizarAresta, criarAresta } from "./arestas.ts";
 import { apagarNota, atualizarNota, criarNota, listarNotas, type PatchNota } from "./notas.ts";
+import { apagarObjetoSeta, atualizarObjetoSeta, buscarObjetoSeta, criarObjetoSeta } from "./objetosSeta.ts";
 import { corpoJson, ErroPayloadGrande, origemPermitida } from "./seguranca.ts";
 import type { SalaProjetos } from "./ws.ts";
 
@@ -99,6 +102,14 @@ async function exigirProjeto(
     return null;
   }
   return { usuarioId: sessao.usuario.id, nome: sessao.usuario.nome, papel };
+}
+
+/** Só a forma: a coerência tarefa↔estado é normalizada na escrita, não exigida do cliente. */
+function execucaoValida(valor: unknown): boolean {
+  if (!valor || typeof valor !== "object" || Array.isArray(valor)) return false;
+  const { tarefa, estado } = valor as { tarefa?: unknown; estado?: unknown };
+  if (tarefa !== undefined && typeof tarefa !== "boolean") return false;
+  return estado === undefined || estado === null || ESTADOS_EXECUCAO.includes(estado as EstadoExecucao);
 }
 
 function exigirEscrita(res: ServerResponse, papel: Papel): boolean {
@@ -239,6 +250,61 @@ async function lidar(req: IncomingMessage, res: ServerResponse, pool: Pool, sala
     }
   }
 
+  const mObjetosSeta = rota.match(/^\/api\/projetos\/([^/]+)\/objetos-seta$/);
+  if (mObjetosSeta && metodo === "POST") {
+    const projetoId = mObjetosSeta[1];
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    if (!exigirEscrita(res, ctx.papel)) return;
+    const dados = (await corpoJson(req)) as unknown;
+    if (!dados || typeof dados !== "object" || Array.isArray(dados)) {
+      return json(res, 400, { erro: "tipo ou pontos de seta inválidos" });
+    }
+    const { tipo, pontos } = dados as { tipo?: unknown; pontos?: unknown };
+    if (!ehTipoObjetoSeta(tipo) || !pontosObjetoSetaValidos(pontos, tipo)) {
+      return json(res, 400, { erro: "tipo ou pontos de seta inválidos" });
+    }
+    const seta = await criarObjetoSeta(pool, projetoId, ctx.usuarioId, tipo, pontos);
+    sala.transmitir(projetoId, { t: "seta-criada", seta });
+    return json(res, 201, seta);
+  }
+
+  const mObjetoSeta = rota.match(/^\/api\/projetos\/([^/]+)\/objetos-seta\/([^/]+)$/);
+  if (mObjetoSeta) {
+    const [, projetoId, id] = mObjetoSeta;
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    if (!exigirEscrita(res, ctx.papel)) return;
+    if (!RE_UUID.test(id)) return json(res, 404, { erro: "objeto de seta não encontrado" });
+
+    if (metodo === "PATCH") {
+      const existente = await buscarObjetoSeta(pool, projetoId, id);
+      if (!existente) return json(res, 404, { erro: "objeto de seta não encontrado" });
+      const dados = (await corpoJson(req)) as unknown;
+      if (!dados || typeof dados !== "object" || Array.isArray(dados)) {
+        return json(res, 400, { erro: "tipo ou pontos de seta inválidos" });
+      }
+      const patch = dados as { tipo?: unknown; pontos?: unknown };
+      const tipo = "tipo" in patch ? patch.tipo : existente.tipo;
+      const pontos = "pontos" in patch ? patch.pontos : existente.pontos;
+      if (!ehTipoObjetoSeta(tipo) || !pontosObjetoSetaValidos(pontos, tipo)) {
+        return json(res, 400, { erro: "tipo ou pontos de seta inválidos" });
+      }
+      const seta = await atualizarObjetoSeta(pool, projetoId, id, tipo, pontos as Posicao[]);
+      // A leitura acima achou, mas uma exclusão concorrente pode ganhar a corrida.
+      if (!seta) return json(res, 404, { erro: "objeto de seta não encontrado" });
+      sala.transmitir(projetoId, { t: "seta-mudou", seta });
+      return json(res, 200, seta);
+    }
+
+    if (metodo === "DELETE") {
+      const seta = await apagarObjetoSeta(pool, projetoId, id);
+      if (!seta) return json(res, 404, { erro: "objeto de seta não encontrado" });
+      sala.transmitir(projetoId, { t: "seta-apagada", seta });
+      return json(res, 200, { ok: true });
+    }
+  }
+
   const mNos = rota.match(/^\/api\/projetos\/([^/]+)\/nos$/);
   if (mNos && metodo === "POST") {
     const projetoId = mNos[1];
@@ -296,25 +362,40 @@ async function lidar(req: IncomingMessage, res: ServerResponse, pool: Pool, sala
 
     if (metodo === "PATCH") {
       if (!exigirEscrita(res, ctx.papel)) return;
-      const { campos, titulo } = (await corpoJson(req)) as {
-        campos?: Record<string, unknown>;
-        titulo?: string;
-      };
-      if (titulo !== undefined) {
-        if (typeof titulo !== "string" || !titulo.trim()) return json(res, 400, { erro: "titulo obrigatório" });
-        const no = await atualizarTitulo(pool, projetoId, id, titulo.trim());
-        if (!no) return json(res, 404, { erro: "nó não encontrado" });
-        sala.transmitir(projetoId, { t: "no-mudou", no });
+      const dados = (await corpoJson(req)) as unknown;
+      if (!dados || typeof dados !== "object" || Array.isArray(dados)) {
+        return json(res, 400, { erro: "corpo inválido" });
       }
-      if (!campos) return titulo !== undefined ? json(res, 200, { ok: true }) : json(res, 400, { erro: "campos obrigatório" });
+      const { campos, titulo, execucao } = dados as { campos?: unknown; titulo?: unknown; execucao?: unknown };
+      if (titulo !== undefined && (typeof titulo !== "string" || !titulo.trim())) {
+        return json(res, 400, { erro: "titulo obrigatório" });
+      }
+      if (campos !== undefined && (!campos || typeof campos !== "object" || Array.isArray(campos))) {
+        return json(res, 400, { erro: "campos inválidos" });
+      }
+      if (execucao !== undefined && !execucaoValida(execucao)) return json(res, 400, { erro: "execucao inválida" });
+      if (titulo === undefined && campos === undefined && execucao === undefined) {
+        return json(res, 400, { erro: "campos obrigatório" });
+      }
       // Valida contra a categoria DO NÓ, não a do projeto: um projeto mistura várias.
       const atual = await buscarNo(pool, projetoId, id);
       if (!atual) return json(res, 404, { erro: "nó não encontrado" });
       const categoria = await buscarCategoriaPorId(pool, atual.categoria_id);
-      const no = await atualizarCampos(pool, projetoId, id, campos, categoria!);
+      const no = await atualizarNo(
+        pool,
+        projetoId,
+        atual.id,
+        {
+          ...(titulo === undefined ? {} : { titulo: (titulo as string).trim() }),
+          ...(campos === undefined ? {} : { campos: campos as Record<string, unknown> }),
+          ...(execucao === undefined ? {} : { execucao: execucao as PatchNo["execucao"] }),
+        },
+        categoria!,
+      );
+      // A leitura acima achou, mas uma exclusão concorrente pode ganhar a corrida.
       if (!no) return json(res, 404, { erro: "nó não encontrado" });
       sala.transmitir(projetoId, { t: "no-mudou", no });
-      return json(res, 200, { ok: true });
+      return json(res, 200, { ok: true, no });
     }
 
     if (metodo === "DELETE") {

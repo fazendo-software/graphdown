@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ANGULOS_OBJETO, anguloCategoria, RAIO_OBJETO } from "./rodaGeometria.ts";
+import { ANGULOS_OBJETO, anguloCategoria, conterCentroRoda, RAIO_OBJETO } from "./rodaGeometria.ts";
 
 const GRAU = Math.PI / 180;
 
@@ -37,12 +37,18 @@ test("o arco nunca fecha o círculo, nem com a maior categoria", () => {
 });
 
 test("objetos não se sobrepõem enquanto couberem no arco", () => {
-  // 148px de raio e item de ~64px: até ~14 itens o passo tem de superar a largura do item.
+  // 178px de raio e item de ~88px: o cartão maior continua separado no arco.
   const angs = ANGULOS_OBJETO(9, 0);
   const separacao = (angs[1] - angs[0]) * RAIO_OBJETO;
-  assert.ok(separacao > 64, `itens a ${separacao.toFixed(0)}px de distância, item tem ~64px`);
+  assert.ok(separacao > 88, `itens a ${separacao.toFixed(0)}px de distância, item tem ~88px`);
 });
 
 test("quantidade zero não gera item nem quebra", () => {
   assert.deepEqual(ANGULOS_OBJETO(0, 0), []);
+});
+
+test("roda aberta perto da borda continua inteira na viewport", () => {
+  assert.equal(conterCentroRoda(10, 1200), RAIO_OBJETO + 52);
+  assert.equal(conterCentroRoda(1190, 1200), 1200 - RAIO_OBJETO - 52);
+  assert.equal(conterCentroRoda(20, 300), 150, "em tela estreita, centraliza");
 });

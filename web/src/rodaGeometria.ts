@@ -1,8 +1,14 @@
 /** Geometria da roda de dois anéis. Separada do componente porque é a parte que erra em
  * silêncio: um item fora do arco só aparece se alguém olhar a tela na hora certa. */
 
-export const RAIO_CATEGORIA = 66;
-export const RAIO_OBJETO = 148;
+export const RAIO_CATEGORIA = 76;
+export const RAIO_OBJETO = 178;
+
+/** Só desloca a interface radial; o alvo real no canvas continua sendo o clique original. */
+export function conterCentroRoda(coordenada: number, tamanhoDaTela: number): number {
+  const margem = Math.min(RAIO_OBJETO + 52, tamanhoDaTela / 2);
+  return Math.max(margem, Math.min(coordenada, tamanhoDaTela - margem));
+}
 
 const PASSO_OBJETO = (30 * Math.PI) / 180;
 /** Menos que 360° de propósito: fechar o círculo faz o primeiro e o último item colidirem

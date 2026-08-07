@@ -1,13 +1,21 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { desenharForma } from "./rough.ts";
 import { useCores } from "./tema.ts";
+import { AmostraSetaLivre, ROTULOS_SETA_LIVRE } from "./PaletaSetasLivres.tsx";
+import type { TipoSetaLivre } from "./setasLivres.ts";
 
 import { ANGULOS_OBJETO, anguloCategoria, RAIO_CATEGORIA, RAIO_OBJETO } from "./rodaGeometria.ts";
 import { ehAtivacaoPorTeclado } from "./interacoesCanvas.ts";
 
 const MINI = { largura: 40, altura: 28 };
 
-function Miniatura({ forma }: { forma: string }) {
+function Miniatura({ forma, especial, tipo }: { forma: string; especial?: CategoriaRoda["especial"]; tipo: string }) {
+  if (especial === "nota") return <span className="roda-icone" aria-hidden="true">▤</span>;
+  if (especial === "seta-livre") return <AmostraSetaLivre tipo={tipo as TipoSetaLivre} />;
+  return <MiniaturaForma forma={forma} />;
+}
+
+function MiniaturaForma({ forma }: { forma: string }) {
   const cores = useCores();
   const tracos = useMemo(
     () =>
@@ -32,6 +40,7 @@ export type CategoriaRoda = {
   nome: string;
   tipos: string[];
   formaDoTipo: (tipo: string) => string;
+  especial?: "nota" | "seta-livre";
 };
 
 type Props = {
@@ -41,12 +50,16 @@ type Props = {
   /** `segurar`: abriu com o botão esquerdo pressionado, soltar sobre um objeto escolhe.
    * `clique`: abriu pelo menu de contexto e fica de pé até clicarem. */
   gesto: "segurar" | "clique";
-  aoEscolher: (categoriaId: string, tipo: string) => void;
+  aoEscolher: (categoriaId: string, tipo: string, especial?: CategoriaRoda["especial"]) => void;
   aoFechar: () => void;
 };
 
 function posicao(ang: number, raio: number) {
   return `translate(-50%, -50%) translate(${Math.cos(ang) * raio}px, ${Math.sin(ang) * raio}px)`;
+}
+
+function rotuloDoItem(tipo: string, especial?: CategoriaRoda["especial"]) {
+  return especial === "seta-livre" ? ROTULOS_SETA_LIVRE[tipo as TipoSetaLivre] : tipo;
 }
 
 function Componente({ x, y, categorias, gesto, aoEscolher, aoFechar }: Props) {
@@ -80,13 +93,14 @@ function Componente({ x, y, categorias, gesto, aoEscolher, aoFechar }: Props) {
     // Fundo transparente cobrindo a tela: qualquer clique fora fecha sem criar nada.
     <div className="roda-fundo" onClick={aoFechar} onContextMenu={(e) => e.preventDefault()}>
       <div className="roda" style={{ left: x, top: y }} onClick={(e) => e.stopPropagation()}>
-        <span className="roda-centro" aria-hidden="true" />
+        <span className="roda-centro" aria-hidden="true"><b>+</b><small>criar</small></span>
 
         {categorias.map((cat, i) => (
           <button
             key={cat.id}
             type="button"
             className="roda-cat"
+            data-especial={cat.especial}
             aria-pressed={cat.id === aberta}
             style={{ transform: posicao(angCategoria(i), RAIO_CATEGORIA) }}
             // Hover abre: no gesto de segurar não há clique intermediário para dar, e no
@@ -113,13 +127,13 @@ function Componente({ x, y, categorias, gesto, aoEscolher, aoFechar }: Props) {
                   // `pointerup` e não `click`: serve para soltar depois de segurar E para o
                   // clique comum. `click` com detail 0 é Enter/Espaço; mouse já foi tratado
                   // pelo pointerup e não pode criar o objeto duas vezes.
-                  onPointerUp={() => aoEscolher(categoriaAberta.id, tipo)}
+                  onPointerUp={() => aoEscolher(categoriaAberta.id, tipo, categoriaAberta.especial)}
                   onClick={(e) => {
-                    if (ehAtivacaoPorTeclado(e.detail)) aoEscolher(categoriaAberta.id, tipo);
+                    if (ehAtivacaoPorTeclado(e.detail)) aoEscolher(categoriaAberta.id, tipo, categoriaAberta.especial);
                   }}
                 >
-                  <Miniatura forma={categoriaAberta.formaDoTipo(tipo)} />
-                  <span>{tipo}</span>
+                  <Miniatura forma={categoriaAberta.formaDoTipo(tipo)} especial={categoriaAberta.especial} tipo={tipo} />
+                  <span>{rotuloDoItem(tipo, categoriaAberta.especial)}</span>
                 </button>
               ));
             })()

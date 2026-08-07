@@ -16,6 +16,10 @@ export type EstiloAresta = {
   grupo?: string;
 };
 
+/** Const e não union solta: o seletor do modal e a validação da rota leem a mesma lista. */
+export const ESTADOS_EXECUCAO = ["pendente", "em_andamento", "concluido", "bloqueado"] as const;
+export type EstadoExecucao = (typeof ESTADOS_EXECUCAO)[number];
+
 export type No = {
   id: string;
   titulo: string;
@@ -29,6 +33,9 @@ export type No = {
   versao: number;
   /** Desvio de esquema contra a categoria. Não bloqueia salvar, só sinaliza. */
   erro?: string;
+  /** Par sempre normalizado pelo servidor: só tarefa tem estado. Nó informativo é
+   * `{ tarefa: false, estado: null }` e fica fora do cálculo de progresso. */
+  execucao: { tarefa: boolean; estado: EstadoExecucao | null };
 };
 
 export type Grafo = {
@@ -46,6 +53,8 @@ export type CampoCategoria = {
 
 export type Categoria = {
   nome: string;
+  /** Categoria cujo campo `url` é mostrado como iframe no canvas. */
+  incorporavel?: boolean;
   campos: CampoCategoria[];
   cor_por?: string;
   cores?: Record<string, string>;
@@ -75,6 +84,12 @@ export type Papel = "dono" | "editor" | "leitor";
 export type Projeto = { id: string; nome: string; papel: Papel };
 export type Usuario = { id: string; nome: string; email: string };
 export type Nota = { id: string; conteudo: string; x: number; y: number };
+/** Seta visual livre — não é uma relação semântica entre dois nós. */
+export type ObjetoSeta = {
+  id: string;
+  tipo: "linha" | "seta" | "cotovelo" | "bloco" | "divisor";
+  pontos: Posicao[];
+};
 
 /** Retângulo em coordenadas do canvas, usado pelo recorte de exportação. */
 export type Retangulo = { x: number; y: number; largura: number; altura: number };
@@ -94,6 +109,8 @@ export type ExportacaoSnapshot = {
   estilosAresta: Record<string, EstiloAresta>;
   nos: NoExportacao[];
   notas: Nota[];
+  /** Necessário só à exportação visual; Markdown/RFC deliberadamente o omite. */
+  objetosSeta: ObjetoSeta[];
   arestas: Array<Aresta & { id: string }>;
   fantasmas: string[];
 };
@@ -101,12 +118,12 @@ export type ExportacaoSnapshot = {
 /** Recorte congelado pelo cliente antes de pedir o snapshot ao servidor. */
 export type RecorteExportacao =
   | { tipo: "projeto" }
-  | { tipo: "selecao"; nos: string[]; notas: string[]; area: Retangulo }
+  | { tipo: "selecao"; nos: string[]; notas: string[]; setas: string[]; area: Retangulo }
   | {
       tipo: "area";
       area: Retangulo;
       /** Geometria da tela congelada junto com a viewport; inclui resize ainda local. */
-      limites: { nos: Record<string, Retangulo>; notas: Record<string, Retangulo> };
+      limites: { nos: Record<string, Retangulo>; notas: Record<string, Retangulo>; setas: Record<string, Retangulo> };
     };
 
 /** Uma linha do resultado de `GET /busca`. `trecho` já vem destacado pelo ts_headline. */
@@ -130,5 +147,6 @@ export type MsgServidor =
   // Nota não tem mensagem de arraste ao vivo: posição dela é persistida por PATCH ao
   // soltar, então o outro cliente vê a nota pular para o lugar final, não deslizando.
   | { t: "nota-criada" | "nota-mudou" | "nota-apagada"; nota: Nota }
+  | { t: "seta-criada" | "seta-mudou" | "seta-apagada"; seta: ObjetoSeta }
   | { t: "presenca"; usuarios: { id: string; nome: string; editando: string | null }[] }
   | { t: "erro"; mensagem: string };

@@ -150,3 +150,46 @@ test("logout fecha ativamente os sockets daquela sessão", async () => {
     await fechar();
   }
 });
+
+test("PATCH de título, campos e execução emite um único 'no-mudou' já normalizado", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const { cliente } = await registrar(base);
+    const projetoId = await criarProjetoDeTeste(cliente);
+    const { id } = await (
+      await cliente.post(`/api/projetos/${projetoId}/nos`, { titulo: "Etapa", campos: { responsavel: "rh" } })
+    ).json();
+
+    const ws = new WebSocket(`${base.replace("http", "ws")}/ws?projeto=${projetoId}`, {
+      headers: { cookie: cliente.cookie(), origin: base },
+    });
+    await esperarAbrir(ws);
+
+    const mudancas: any[] = [];
+    ws.on("message", (dados) => {
+      const msg = JSON.parse(dados.toString());
+      if (msg.t === "no-mudou") mudancas.push(msg.no);
+    });
+
+    const recebida = esperarMensagem(ws, "no-mudou");
+    await cliente.patch(`/api/projetos/${projetoId}/nos/${id}`, {
+      titulo: "Etapa revisada",
+      campos: { status: "ativo" },
+      execucao: { tarefa: true },
+    });
+    const msg = await recebida;
+
+    // Sem estado intermediário: a primeira (e única) mensagem já traz as três mudanças.
+    assert.equal(msg.no.titulo, "Etapa revisada");
+    assert.equal(msg.no.campos.status, "ativo");
+    assert.deepEqual(msg.no.execucao, { tarefa: true, estado: "pendente" });
+
+    // Um segundo broadcast sairia no mesmo tick da resposta HTTP; a folga é generosa.
+    await new Promise((ok) => setTimeout(ok, 200));
+    assert.equal(mudancas.length, 1, "uma atualização lógica, um broadcast");
+
+    ws.close();
+  } finally {
+    await fechar();
+  }
+});

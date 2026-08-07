@@ -55,7 +55,12 @@ Ver `.traycer` (artefatos do epic) para o contrato completo de schema, rotas e p
   de 220 ms. Mover mais de 6 px cancela o gesto; o menu de contexto continua abrindo a
   mesma roda. Primeiro informe o título e, no segundo modal, preencha os demais dados e
   clique em **concluir**.
-- `Ctrl`/`Cmd`+`A` seleciona somente nós e notas do canvas — setas não entram na seleção.
+- A seção **objetos de seta** cria linha, seta, seta em cotovelo, seta em bloco ou divisor
+  diretamente no canvas, sem título nem modal. Linhas e setas começam com início, meio e
+  fim; arraste o controle vazio de um segmento para criar uma dobra e novos meios. O divisor
+  fica sempre reto entre somente dois extremos.
+- `Ctrl`/`Cmd`+`A` seleciona nós, notas e objetos de seta livres — relações entre nós não
+  entram na seleção.
   `Ctrl`/`Cmd`+`C`, `X` e `V` copiam, cortam e colam a seleção; ao colar, o conjunto é
   deslocado 40 px e só as setas cujas duas pontas foram copiadas são recriadas. A área de
   transferência é interna ao app e dura apenas enquanto a página está aberta.
@@ -65,6 +70,13 @@ Ver `.traycer` (artefatos do epic) para o contrato completo de schema, rotas e p
   nem sincronizado entre clientes.
 - Todos os pedidos de texto e confirmação usam modais da aplicação; o `×` no canto
   superior direito fecha o modal.
+- **Exportar** baixa o projeto, a seleção ou a área atual em PNG, PDF, Markdown ou
+  Markdown para RFC. PNG/PDF preservam objetos de seta livres; os dois formatos Markdown
+  levam o conteúdo dos nós, notas e relações, sem posições, tamanhos, cores, formas ou
+  outros detalhes visuais. O formato RFC também acrescenta um mapa compacto e determinístico
+  de entradas, saídas, bifurcações, convergências e ciclos do fluxo.
+- A categoria **Conteúdo incorporado** cria um objeto de URL. Links HTTPS do YouTube
+  abrem no player sem cookies; outros sites aparecem quando permitem iframe.
 
 `PATCH /api/projetos/:projeto/nos/:no` aceita `{ titulo }`, `{ campos }` ou ambos. As
 alterações de nó e aresta tratam itens que desapareceram durante a operação como `404`, e

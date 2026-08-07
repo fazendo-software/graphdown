@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import MarkdownIt from "markdown-it";
-import type { Papel } from "../../core/tipos.ts";
+import type { EstadoExecucao, No, Papel } from "../../core/tipos.ts";
+import { ESTADOS_EXECUCAO } from "../../core/tipos.ts";
 import { ErroConflito, type apiProjeto, type NoDetalhe } from "./api.ts";
+import { GLIFO_EXECUCAO, ROTULO_EXECUCAO } from "./execucao.ts";
 import { categoriaDoNo, type Catalogo } from "./grafoRender.ts";
 import { DialogoConfirmacao } from "./Dialogos.tsx";
 import { TAMANHO_MAXIMO, TAMANHO_MINIMO, tamanhoProporcional } from "./tamanhoProporcional.ts";
@@ -33,6 +35,8 @@ export function Modal({ id, catalogo, papel, api, presenca, meuId, enviarEditand
   const [confirmando, setConfirmando] = useState(false);
   const [avancado, setAvancado] = useState(false);
   const [titulo, setTitulo] = useState("");
+  const [campos, setCampos] = useState<Record<string, unknown>>({});
+  const [execucao, setExecucao] = useState<No["execucao"]>({ tarefa: false, estado: null });
   const [largura, setLargura] = useState(200);
   const [altura, setAltura] = useState(106);
   const somenteLeitura = papel === "leitor";
@@ -47,6 +51,8 @@ export function Modal({ id, catalogo, papel, api, presenca, meuId, enviarEditand
       .then((detalhe) => {
         setNo(detalhe);
         setTitulo(detalhe.titulo);
+        setCampos(detalhe.campos);
+        setExecucao(detalhe.execucao);
         const w = tamanho?.width ?? 200;
         const h = tamanho?.height ?? 106;
         setLargura(Math.max(TAMANHO_MINIMO, Math.min(TAMANHO_MAXIMO, Math.round(w))));
@@ -66,26 +72,6 @@ export function Modal({ id, catalogo, papel, api, presenca, meuId, enviarEditand
     // pra não reenviar "editando" toda vez que o Canvas re-renderiza.
   }, [editandoCorpo, id]);
 
-  async function salvarCampo(chave: string, valor: string) {
-    try {
-      await api.patchNo(id, { [chave]: valor });
-      setNo(await api.no(id));
-    } catch (e) {
-      setFalha((e as Error).message);
-    }
-  }
-
-  async function salvarTitulo() {
-    const novo = titulo.trim();
-    if (!novo || !no || novo === no.titulo) return;
-    try {
-      await api.renomearNo(id, novo);
-      setNo({ ...no, titulo: novo });
-    } catch (e) {
-      setFalha((e as Error).message);
-    }
-  }
-
   function aplicarTamanho(lado: "largura" | "altura", valor: number) {
     if (!aoRedimensionar) return;
     // Dimensão ainda é estado de renderização do canvas, não coluna do nó: manter esta
@@ -96,19 +82,48 @@ export function Modal({ id, catalogo, papel, api, presenca, meuId, enviarEditand
     aoRedimensionar(proximo.largura, proximo.altura);
   }
 
-  async function salvarCorpo(forcarVersao?: number) {
-    if (!no) return;
+  async function salvarCorpo(forcarVersao?: number): Promise<boolean> {
+    if (!no) return false;
     const texto = rascunho.endsWith("\n") ? rascunho : `${rascunho}\n`;
     try {
       const r = await api.putCorpo(id, texto, forcarVersao ?? no.versao);
       setNo({ ...no, corpo: texto, versao: r.versao });
       setEditandoCorpo(false);
       setConflito(null);
+      return true;
     } catch (e) {
       if (e instanceof ErroConflito) {
         setConflito({ versao: e.versao, corpo: e.corpo });
-        return;
+        return false;
       }
+      setFalha((e as Error).message);
+      return false;
+    }
+  }
+
+  async function concluir() {
+    if (somenteLeitura) {
+      aoFechar();
+      return;
+    }
+    if (!no) return;
+    const novoTitulo = titulo.trim();
+    if (!novoTitulo) {
+      setFalha("informe um nome para concluir.");
+      return;
+    }
+    if (editandoCorpo && !(await salvarCorpo())) return;
+    try {
+      // Só o que mudou, num PATCH só: o servidor grava tudo junto e transmite um único
+      // `no-mudou`, então ninguém vê nome novo com execução antiga.
+      const mudou = {
+        ...(novoTitulo !== no.titulo ? { titulo: novoTitulo } : {}),
+        ...(JSON.stringify(campos) !== JSON.stringify(no.campos) ? { campos } : {}),
+        ...(JSON.stringify(execucao) !== JSON.stringify(no.execucao) ? { execucao } : {}),
+      };
+      if (Object.keys(mudou).length > 0) await api.patchNo(id, mudou);
+      aoFechar();
+    } catch (e) {
       setFalha((e as Error).message);
     }
   }
@@ -141,7 +156,7 @@ export function Modal({ id, catalogo, papel, api, presenca, meuId, enviarEditand
 
   return (
     <div className="modal-fundo" onClick={aoFechar}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-objeto" role="dialog" aria-modal="true" aria-label="detalhes do objeto" onClick={(e) => e.stopPropagation()}>
         {!no ? (
           // A falha precisa aparecer aqui tambem: se o GET inicial quebrar, `no` fica null
           // pra sempre e o usuario ficaria preso num "carregando…" sem botao de fechar.
@@ -158,124 +173,149 @@ export function Modal({ id, catalogo, papel, api, presenca, meuId, enviarEditand
           </>
         ) : (
           <>
-            <button className="modal-fechar" type="button" aria-label="fechar" title="fechar" onClick={aoFechar}>×</button>
-            <h2>
-              {no.titulo}
-              {categoria ? <span className="selo">{categoria.nome}</span> : null}
-            </h2>
+            <header className="modal-cabecalho">
+              <div>
+                <p className="modal-sobretitulo">detalhes do objeto</p>
+                <h2 id="titulo-modal-objeto">
+                  {no.titulo}
+                  {categoria ? <span className="selo">{categoria.nome}</span> : null}
+                </h2>
+              </div>
+              <div className="modal-ferramentas">
+                {!somenteLeitura ? (
+                  <button type="button" className="botao-avancado" aria-label="configurações avançadas" title="configurações avançadas" aria-expanded={avancado} onClick={() => setAvancado((v) => !v)}>
+                    ⚙
+                  </button>
+                ) : null}
+                <button className="modal-fechar" type="button" aria-label="fechar" title="fechar" onClick={aoFechar}>×</button>
+              </div>
+            </header>
 
-            <label htmlFor="no-titulo">nome</label>
-            <input
-              id="no-titulo"
-              value={titulo}
-              disabled={somenteLeitura}
-              onChange={(e) => setTitulo(e.target.value)}
-              onBlur={() => void salvarTitulo()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void salvarTitulo();
-              }}
-            />
+            <div className="modal-corpo">
+              <section className="modal-secao-objeto" aria-label="informações do objeto">
+                <label htmlFor="no-titulo">nome</label>
+                <input id="no-titulo" value={titulo} disabled={somenteLeitura} onChange={(e) => setTitulo(e.target.value)} />
+                {quemEdita ? <p className="presenca">✎ {quemEdita.nome} está editando</p> : null}
+                {(categoria?.campos ?? []).length > 0 ? (
+                  <div className="modal-campos">
+                    {(categoria?.campos ?? []).map((campo) => {
+                      const valor = String(campos[campo.chave] ?? "");
+                      return (
+                        <div key={campo.chave}>
+                          <label htmlFor={`campo-${campo.chave}`}>{campo.chave}</label>
+                          {campo.tipo === "enum" ? (
+                            <select id={`campo-${campo.chave}`} value={valor} disabled={somenteLeitura} onChange={(e) => setCampos((atuais) => ({ ...atuais, [campo.chave]: e.target.value }))}>
+                              {(campo.opcoes ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          ) : (
+                            <input id={`campo-${campo.chave}`} value={valor} disabled={somenteLeitura} onChange={(e) => setCampos((atuais) => ({ ...atuais, [campo.chave]: e.target.value }))} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </section>
 
-            {quemEdita ? <p className="presenca">✎ {quemEdita.nome} está editando</p> : null}
-
-            {(categoria?.campos ?? []).map((campo) => {
-              const valor = String(no.campos[campo.chave] ?? "");
-              return (
-                <div key={campo.chave}>
-                  <label htmlFor={`campo-${campo.chave}`}>{campo.chave}</label>
-                  {campo.tipo === "enum" ? (
+              {/* Execução é dado do objeto, não um campo da categoria: um projeto pode
+                  ter um campo `status` com outro significado, e qualquer categoria pode
+                  virar tarefa. */}
+              <section className="modal-secao-objeto secao-execucao" aria-label="execução do objeto">
+                <label className="linha-execucao" htmlFor="no-tarefa">
+                  <input
+                    id="no-tarefa"
+                    type="checkbox"
+                    checked={execucao.tarefa}
+                    disabled={somenteLeitura}
+                    onChange={(e) =>
+                      // Mesma normalização do servidor: marcar sem estado começa pendente,
+                      // desmarcar limpa o estado.
+                      setExecucao(
+                        e.target.checked
+                          ? { tarefa: true, estado: execucao.estado ?? "pendente" }
+                          : { tarefa: false, estado: null },
+                      )
+                    }
+                  />
+                  <span>é tarefa</span>
+                </label>
+                {execucao.tarefa ? (
+                  <>
+                    <label htmlFor="no-estado">estado</label>
                     <select
-                      id={`campo-${campo.chave}`}
-                      defaultValue={valor}
+                      id="no-estado"
+                      value={execucao.estado ?? "pendente"}
                       disabled={somenteLeitura}
-                      onChange={(e) => void salvarCampo(campo.chave, e.target.value)}
+                      onChange={(e) => setExecucao({ tarefa: true, estado: e.target.value as EstadoExecucao })}
                     >
-                      {(campo.opcoes ?? []).map((o) => (
-                        <option key={o} value={o}>
-                          {o}
+                      {ESTADOS_EXECUCAO.map((estado) => (
+                        <option key={estado} value={estado}>
+                          {GLIFO_EXECUCAO[estado]} {ROTULO_EXECUCAO[estado]}
                         </option>
                       ))}
                     </select>
-                  ) : (
-                    <input
-                      id={`campo-${campo.chave}`}
-                      defaultValue={valor}
-                      disabled={somenteLeitura}
-                      onBlur={(e) => void salvarCampo(campo.chave, e.target.value)}
-                    />
-                  )}
-                </div>
-              );
-            })}
-
-            <label>detalhe</label>
-            {editandoCorpo ? (
-              <>
-                <textarea value={rascunho} onChange={(e) => setRascunho(e.target.value)} />
-                {conflito ? (
-                  <div className="conflito">
-                    <p>O texto mudou desde que você abriu. Sobrescrever mesmo assim?</p>
-                    <div className="modal-acoes">
-                      <button onClick={usarTextoDoServidor}>ver o texto novo</button>
-                      <button className="perigo" onClick={() => void salvarCorpo(conflito.versao)}>
-                        sobrescrever
-                      </button>
-                    </div>
-                  </div>
+                  </>
                 ) : (
-                  <div className="modal-acoes">
-                    <button onClick={() => setEditandoCorpo(false)}>cancelar</button>
-                    <button onClick={() => void salvarCorpo()}>salvar detalhe</button>
-                  </div>
+                  <p className="dica">objeto informativo: fica fora da contagem de progresso.</p>
                 )}
-              </>
-            ) : (
-              <div
-                className="detalhe"
-                onDoubleClick={() => {
-                  if (somenteLeitura) return;
-                  setRascunho(no.corpo);
-                  setEditandoCorpo(true);
-                }}
-                // seguro: ver comentário do `md` acima — html:false e validação de link
-                // do próprio markdown-it, sem lib de sanitização extra.
-                dangerouslySetInnerHTML={{
-                  __html: no.corpo.trim()
-                    ? md.render(no.corpo)
-                    : `<p class="vazio">${somenteLeitura ? "sem detalhe" : "duplo-clique para escrever o detalhe"}</p>`,
-                }}
-              />
-            )}
+              </section>
 
-            {falha ? <p className="erro">{falha}</p> : null}
+              <section className="modal-secao-objeto modal-secao-detalhe" aria-label="detalhe do objeto">
+                <div className="modal-secao-titulo">
+                  <div><strong>detalhe</strong><span>{somenteLeitura ? "informações registradas" : "duplo-clique para editar"}</span></div>
+                </div>
+                {editandoCorpo ? (
+                  <>
+                    <textarea value={rascunho} onChange={(e) => setRascunho(e.target.value)} />
+                    {conflito ? (
+                      <div className="conflito">
+                        <p>O texto mudou desde que você abriu. Sobrescrever mesmo assim?</p>
+                        <div className="modal-acoes-internas">
+                          <button onClick={usarTextoDoServidor}>ver o texto novo</button>
+                          <button className="perigo" onClick={() => void salvarCorpo(conflito.versao)}>sobrescrever</button>
+                        </div>
+                      </div>
+                    ) : <div className="modal-acoes-internas"><button onClick={() => setEditandoCorpo(false)}>cancelar</button></div>}
+                  </>
+                ) : (
+                  <div
+                    className="detalhe"
+                    onDoubleClick={() => {
+                      if (somenteLeitura) return;
+                      setRascunho(no.corpo);
+                      setEditandoCorpo(true);
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: no.corpo.trim()
+                        ? md.render(no.corpo)
+                        : `<p class="vazio">${somenteLeitura ? "sem detalhe" : "duplo-clique para escrever o detalhe"}</p>`,
+                    }}
+                  />
+                )}
+              </section>
 
-            {!somenteLeitura ? (
-              <>
-                <button type="button" className="botao-avancado" aria-label="configurações avançadas" title="configurações avançadas" aria-expanded={avancado} onClick={() => setAvancado((v) => !v)}>
-                  ⚙
-                </button>
-                {avancado ? (
-                  <div className="avancado">
-                    <p className="secao">configuração do objeto</p>
-                    <p className="dica">id: <code>{no.id}</code></p>
-                    <label htmlFor="no-largura">largura (20–1000 px)</label>
-                    <input id="no-largura" type="number" min={TAMANHO_MINIMO} max={TAMANHO_MAXIMO} value={largura} onChange={(e) => aplicarTamanho("largura", Number(e.target.value))} />
-                    <label htmlFor="no-altura">altura (20–1000 px)</label>
-                    <input id="no-altura" type="number" min={TAMANHO_MINIMO} max={TAMANHO_MAXIMO} value={altura} onChange={(e) => aplicarTamanho("altura", Number(e.target.value))} />
-                    <p className="dica">proporção mantida automaticamente; mínimo 20×20 e máximo 1000×1000.</p>
+              {avancado ? (
+                <section className="avancado" aria-label="configurações avançadas">
+                  <p className="secao">configuração do objeto</p>
+                  <p className="dica">id: <code>{no.id}</code></p>
+                  <div className="modal-campos">
+                    <div><label htmlFor="no-largura">largura (20–1000 px)</label><input id="no-largura" type="number" min={TAMANHO_MINIMO} max={TAMANHO_MAXIMO} value={largura} onChange={(e) => aplicarTamanho("largura", Number(e.target.value))} /></div>
+                    <div><label htmlFor="no-altura">altura (20–1000 px)</label><input id="no-altura" type="number" min={TAMANHO_MINIMO} max={TAMANHO_MAXIMO} value={altura} onChange={(e) => aplicarTamanho("altura", Number(e.target.value))} /></div>
                   </div>
-                ) : null}
-              </>
-            ) : null}
+                  <p className="dica">proporção mantida automaticamente; mínimo 20×20 e máximo 1000×1000.</p>
+                </section>
+              ) : null}
+              {falha ? <p className="erro">{falha}</p> : null}
+            </div>
 
-            <div className="modal-acoes">
+            <footer className="modal-rodape">
               {!somenteLeitura ? (
                 <button className="perigo" onClick={() => void apagar()}>
                   apagar passo
                 </button>
               ) : null}
-              <button title="concluir e fechar" onClick={aoFechar}>concluir</button>
-            </div>
+              <button title="salvar alterações e fechar" onClick={() => void concluir()}>concluir</button>
+            </footer>
           </>
         )}
         {confirmando ? (

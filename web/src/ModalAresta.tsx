@@ -59,80 +59,60 @@ export function ModalAresta({ aresta, catalogo, papel, api, aoFechar }: Props) {
 
   return (
     <div className="modal-fundo" onClick={aoFechar}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-fechar" type="button" aria-label="fechar" title="fechar" onClick={aoFechar}>×</button>
-        <h2>
-          <code>{aresta.de}</code> → <code>{aresta.para}</code>
-        </h2>
+      <div className="modal modal-aresta" role="dialog" aria-modal="true" aria-label="detalhes da relação" onClick={(e) => e.stopPropagation()}>
+        <header className="modal-cabecalho">
+          <div>
+            <p className="modal-sobretitulo">relação</p>
+            <h2><code>{aresta.de}</code> → <code>{aresta.para}</code></h2>
+          </div>
+          <button className="modal-fechar" type="button" aria-label="fechar" title="fechar" onClick={aoFechar}>×</button>
+        </header>
 
-        <label htmlFor="aresta-quando">rótulo</label>
-        <input
-          id="aresta-quando"
-          value={quando}
-          placeholder="ex.: aprovado"
-          disabled={somenteLeitura}
-          onChange={(e) => setQuando(e.target.value)}
-        />
-
-        {tipos.length > 0 ? (
-          <>
-            <label htmlFor="aresta-tipo">tipo</label>
-            <select
-              id="aresta-tipo"
-              value={tipo}
-              disabled={somenteLeitura}
-              onChange={(e) => setTipo(e.target.value)}
-            >
-              <option value="padrao">padrão</option>
-              {tipos.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </>
-        ) : null}
-
-        {recursos.length > 0 ? (
-          <>
-            <p className="secao">recursos até chegar ao destino</p>
-            {recursos.map((campo) => {
-              const valor = campos[campo.chave] ?? "";
-              const trocar = (v: string) => setCampos((c) => ({ ...c, [campo.chave]: v }));
-              return (
-                <div key={campo.chave}>
-                  <label htmlFor={`aresta-${campo.chave}`}>{campo.chave}</label>
-                  {campo.tipo === "enum" ? (
-                    <select
-                      id={`aresta-${campo.chave}`}
-                      value={valor}
-                      disabled={somenteLeitura}
-                      onChange={(e) => trocar(e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {(campo.opcoes ?? []).map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      id={`aresta-${campo.chave}`}
-                      value={valor}
-                      disabled={somenteLeitura}
-                      onChange={(e) => trocar(e.target.value)}
-                    />
-                  )}
+        <div className="modal-corpo">
+          <section className="modal-secao-objeto">
+            <div className="modal-campos">
+              <div>
+                <label htmlFor="aresta-quando">rótulo</label>
+                <input id="aresta-quando" value={quando} placeholder="ex.: aprovado" disabled={somenteLeitura} onChange={(e) => setQuando(e.target.value)} />
+              </div>
+              {tipos.length > 0 ? (
+                <div>
+                  <label htmlFor="aresta-tipo">tipo</label>
+                  <select id="aresta-tipo" value={tipo} disabled={somenteLeitura} onChange={(e) => setTipo(e.target.value)}>
+                    <option value="padrao">padrão</option>
+                    {tipos.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
                 </div>
-              );
-            })}
-          </>
-        ) : null}
+              ) : null}
+            </div>
+          </section>
 
-        {falha ? <p className="erro">{falha}</p> : null}
+          {recursos.length > 0 ? (
+            <section className="modal-secao-objeto">
+              <div className="modal-secao-titulo"><div><strong>recursos</strong><span>necessários até chegar ao destino</span></div></div>
+              <div className="modal-campos">
+                {recursos.map((campo) => {
+                  const valor = campos[campo.chave] ?? "";
+                  const trocar = (v: string) => setCampos((c) => ({ ...c, [campo.chave]: v }));
+                  return (
+                    <div key={campo.chave}>
+                      <label htmlFor={`aresta-${campo.chave}`}>{campo.chave}</label>
+                      {campo.tipo === "enum" ? (
+                        <select id={`aresta-${campo.chave}`} value={valor} disabled={somenteLeitura} onChange={(e) => trocar(e.target.value)}>
+                          <option value="">—</option>
+                          {(campo.opcoes ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      ) : <input id={`aresta-${campo.chave}`} value={valor} disabled={somenteLeitura} onChange={(e) => trocar(e.target.value)} />}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+          {falha ? <p className="erro">{falha}</p> : null}
+        </div>
 
-        <div className="modal-acoes">
+        <footer className="modal-rodape">
           {!somenteLeitura ? (
             <button className="perigo" onClick={() => void remover()}>
               desligar
@@ -140,7 +120,7 @@ export function ModalAresta({ aresta, catalogo, papel, api, aoFechar }: Props) {
           ) : null}
           {!somenteLeitura ? <button onClick={aoFechar}>cancelar</button> : null}
           {!somenteLeitura ? <button onClick={() => void salvar()}>salvar</button> : null}
-        </div>
+        </footer>
         {confirmando ? (
           <DialogoConfirmacao
             mensagem={`Desligar "${aresta.de}" de "${aresta.para}"?`}

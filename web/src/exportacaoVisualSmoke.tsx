@@ -17,10 +17,11 @@ const snapshot: ExportacaoSnapshot = {
   camposAresta: [{ chave: "prazo", tipo: "texto" }],
   estilosAresta: { padrao: { estilo: "continua", ponta: "cheia" }, dependencia: { estilo: "tracejada", ponta: "ambas", cor: "#7c3aed" } },
   nos: [
-    { id: "inicio", titulo: "Início 🧭 漢字 e um título deliberadamente muito longo para confirmar a medição real", categoria_id: "processo", campos: { tipo: "etapa" }, corpo: "", versao: 1, posicao: { x: 40, y: 40 } },
-    { id: "fim", titulo: "Fim", categoria_id: "processo", campos: { tipo: "etapa" }, corpo: "", versao: 1, posicao: { x: 530, y: 310 } },
+    { id: "inicio", titulo: "Início 🧭 漢字 e um título deliberadamente muito longo para confirmar a medição real", categoria_id: "processo", campos: { tipo: "etapa" }, corpo: "", versao: 1, execucao: { tarefa: false, estado: null }, posicao: { x: 40, y: 40 } },
+    { id: "fim", titulo: "Fim", categoria_id: "processo", campos: { tipo: "etapa" }, corpo: "", versao: 1, execucao: { tarefa: false, estado: null }, posicao: { x: 530, y: 310 } },
   ],
   notas: [{ id: "nota", x: 300, y: 20, conteudo: "Nota longa com emoji 👩🏽‍💻, CJK 漢字 e palavras extensas para o smoke conferir que o post-it cresce sem ser cortado.".repeat(4) }],
+  objetosSeta: [],
   arestas: [{ id: "relacao", de: "inicio", para: "fim", tipo: "dependencia", quando: "depois de uma descrição extensa", campos: { prazo: "até o próximo ciclo de planejamento" } }],
   fantasmas: [],
 };

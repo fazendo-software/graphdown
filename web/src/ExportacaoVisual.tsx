@@ -7,6 +7,8 @@ import { caminho, desenharForma, seedDoId, tamanhoDe, ALTURA_ROTULO } from "./ro
 import { PALETA, type Tema } from "./tema.ts";
 import { categoriaDoNo, corDoNo, formaDoNo } from "./grafoRender.ts";
 import { pontasDaCaixa } from "./flutuante.ts";
+import { urlDoEmbed } from "./embed.ts";
+import { caixaDosPontos, caminhoSvg, pontosDoCotovelo } from "./setasLivres.ts";
 import {
   calcularLimitesExportacao,
   ErroExportacaoVisual,
@@ -43,10 +45,12 @@ type NoVisual = {
   altura: number;
   forma: string;
   cor: string;
+  embed?: string;
 };
 
 type NotaVisual = { id: string; conteudo: string; x: number; y: number; largura: number; altura: number };
 type ArestaVisual = ExportacaoSnapshot["arestas"][number] & { origem: NoVisual; destino: NoVisual; rotulo?: string };
+type SetaLivreVisual = ExportacaoSnapshot["objetosSeta"][number];
 
 const FONTE = 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
@@ -80,6 +84,7 @@ function montarModelo(opcoes: OpcoesExportacaoVisual, folgaMedida = 0) {
       altura: tamanho.altura,
       forma,
       cor: corDoNo(categoria, no.campos),
+      embed: categoria?.incorporavel ? urlDoEmbed(no.campos.url) : undefined,
     };
   });
   const notas: NotaVisual[] = snapshot.notas.map((nota) => {
@@ -101,12 +106,14 @@ function montarModelo(opcoes: OpcoesExportacaoVisual, folgaMedida = 0) {
     if (!origem || !destino) return [];
     return [{ ...aresta, origem, destino, rotulo: rotuloAresta(aresta, snapshot) }];
   });
+  const objetosSeta: SetaLivreVisual[] = snapshot.objetosSeta;
   const caixas: CaixaVisual[] = [
     ...nos.map((no) => ({ x: no.x, y: no.y, largura: no.largura, altura: no.altura + ALTURA_ROTULO })),
     ...notas.map((nota) => ({ x: nota.x, y: nota.y, largura: nota.largura, altura: nota.altura })),
     ...arestas.flatMap((aresta) => (aresta.rotulo ? [caixaRotuloAresta(aresta)] : [])),
+    ...objetosSeta.map((seta) => caixaDosPontos(seta.pontos)),
   ];
-  return { snapshot, nos, notas, arestas, limites: calcularLimitesExportacao(caixas, MARGEM_EXPORTACAO + folgaMedida) };
+  return { snapshot, nos, notas, arestas, objetosSeta, limites: calcularLimitesExportacao(caixas, MARGEM_EXPORTACAO + folgaMedida) };
 }
 
 function rotuloAresta(aresta: ExportacaoSnapshot["arestas"][number], snapshot: ExportacaoSnapshot): string | undefined {
@@ -145,7 +152,7 @@ function estiloAresta(arestas: Record<string, EstiloAresta>, tipo: string | unde
 }
 
 function Replica({ opcoes, folgaMedida }: { opcoes: OpcoesExportacaoVisual; folgaMedida: number }) {
-  const { snapshot, nos, notas, arestas, limites } = montarModelo(opcoes, folgaMedida);
+  const { snapshot, nos, notas, arestas, objetosSeta, limites } = montarModelo(opcoes, folgaMedida);
   const paleta = PALETA[opcoes.tema];
   const deslocar = (x: number, y: number) => ({ x: x - limites.x, y: y - limites.y });
   const markerId = (id: string) => `seta-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -173,6 +180,14 @@ function Replica({ opcoes, folgaMedida }: { opcoes: OpcoesExportacaoVisual; folg
               </marker>
             );
           })}
+          {objetosSeta.map((seta) => {
+            const bloco = seta.tipo === "bloco";
+            return (
+              <marker key={`livre-${seta.id}`} id={markerId(`livre-${seta.id}`)} markerWidth={bloco ? "14" : "8"} markerHeight={bloco ? "14" : "8"} refX={bloco ? "12" : "7"} refY={bloco ? "7" : "4"} orient="auto">
+                <path d={bloco ? "M0,0 L14,7 L0,14 Z" : "M0,0 L8,4 L0,8 Z"} fill={paleta.aresta} />
+              </marker>
+            );
+          })}
         </defs>
         {arestas.map((aresta) => {
           const estilo = estiloAresta(snapshot.estilosAresta, aresta.tipo, paleta.aresta);
@@ -193,6 +208,12 @@ function Replica({ opcoes, folgaMedida }: { opcoes: OpcoesExportacaoVisual; folg
               {tracos.map((traco, indice) => <path key={indice} d={traco.d} fill="none" stroke={cor} strokeWidth="1.4" strokeDasharray={traco.strokeLineDash?.join(" ")} markerEnd={indice === 0 && estilo.ponta !== "nenhuma" ? `url(#${markerId(aresta.id)})` : undefined} markerStart={indice === 0 && estilo.ponta === "ambas" ? `url(#${markerId(aresta.id)})` : undefined} />)}
             </g>
           );
+        })}
+        {objetosSeta.map((seta) => {
+          const pontos = seta.tipo === "cotovelo" ? pontosDoCotovelo(seta.pontos) : seta.pontos;
+          const locais = pontos.map((ponto) => ({ x: ponto.x - limites.x, y: ponto.y - limites.y }));
+          const ponta = seta.tipo === "seta" || seta.tipo === "cotovelo" || seta.tipo === "bloco";
+          return <path key={`livre-${seta.id}`} d={caminhoSvg(locais)} fill="none" stroke={paleta.aresta} strokeWidth={seta.tipo === "bloco" ? 16 : seta.tipo === "divisor" ? 2 : 2.5} strokeLinecap={seta.tipo === "bloco" ? "butt" : "round"} strokeLinejoin="round" markerEnd={ponta ? `url(#${markerId(`livre-${seta.id}`)})` : undefined} />;
         })}
       </svg>
       {nos.map((no) => <NoDaReplica key={no.id} no={no} origem={limites} paleta={paleta} />)}
@@ -224,6 +245,11 @@ function NoDaReplica({ no, origem, paleta }: { no: NoVisual; origem: CaixaVisual
       <svg width={no.largura} height={no.altura} style={{ display: "block", overflow: "visible" }}>
         {tracos.map((traco, indice) => <path key={indice} d={traco.d} stroke={traco.stroke} fill={traco.fill} strokeWidth={traco.strokeWidth} />)}
       </svg>
+      {no.embed ? (
+        <div data-exportacao-caixa="embed" style={{ position: "absolute", inset: 10, display: "grid", placeItems: "center", padding: 8, border: `1px solid ${no.cor}`, borderRadius: 4, background: paleta.rotuloFundo, color: paleta.rotuloTexto, fontSize: 12, lineHeight: 1.35, overflowWrap: "anywhere" }}>
+          <span><strong>conteúdo incorporado</strong><br />{no.embed}</span>
+        </div>
+      ) : null}
       <div data-exportacao-caixa="titulo" style={{ minHeight: ALTURA_ROTULO, padding: "0 6px", fontSize: 14, lineHeight: 1.3, fontWeight: 700, overflowWrap: "anywhere" }}>{no.titulo}</div>
     </div>
   );

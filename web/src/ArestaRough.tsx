@@ -9,14 +9,10 @@ import {
 import { caminho, seedDoId } from "./rough.ts";
 import { pontasDaAresta } from "./flutuante.ts";
 import { useCores } from "./tema.ts";
+import { corDeFluxo } from "./execucao.ts";
+import { ARESTA_PADRAO } from "./grafoRender.ts";
+import type { DadosNo } from "./NoProcesso.tsx";
 import type { EstiloAresta } from "../../core/tipos.ts";
-
-/** Sem `cor`: quem não declarou cor na categoria segue o tema. `grupo` é rótulo de UI e não
- * tem padrão — seta sem grupo cai na seção "outras" da paleta. */
-export const ARESTA_PADRAO: Omit<Required<EstiloAresta>, "cor" | "grupo"> = {
-  estilo: "continua",
-  ponta: "cheia",
-};
 
 const TRACEJADO: Record<string, number[] | undefined> = {
   continua: undefined,
@@ -45,6 +41,7 @@ function Componente({
   const cor = declarado?.cor || cores.aresta;
   const origem = useInternalNode(source);
   const destino = useInternalNode(target);
+  const corFluxo = corDeFluxo((destino?.data as DadosNo | undefined)?.execucao, cores, cor);
 
   // Antes da primeira medição os nós não têm tamanho; aí valem as pontas fixas que o
   // React Flow calculou pelos handles.
@@ -94,6 +91,15 @@ function Componente({
           markerStart={i === 0 ? markerStart : undefined}
         />
       ))}
+      {/* Camada leve, sem marcador nem eventos: o traço contínuo abaixo preserva a
+          relação; os pontos animados deixam explícito o sentido do fluxo. A cor vem do
+          estado da tarefa de destino, lido do nó vivo — assim um `no-mudou` repinta o
+          fluxo sem reconstruir a aresta. */}
+      <path
+        className="aresta-fluxo"
+        d={d}
+        style={{ stroke: corFluxo, animationDelay: `-${seedDoId(id) % 1600}ms` }}
+      />
       {label ? (
         <EdgeLabelRenderer>
           <div

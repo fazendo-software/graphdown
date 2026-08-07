@@ -6,7 +6,7 @@ import { aplicarDiffRender, reconciliarFantasmas, type ConstrutoresRender, type 
 import type { DadosNo } from "./NoProcesso.tsx";
 
 function no(id: string, extra: Partial<No> = {}): No {
-  return { id, titulo: id, categoria_id: "cat-1", campos: {}, versao: 1, ...extra };
+  return { id, titulo: id, categoria_id: "cat-1", campos: {}, versao: 1, execucao: { tarefa: false, estado: null }, ...extra };
 }
 
 function nodeReal(id: string, posicao = { x: 0, y: 0 }): Node {
@@ -28,6 +28,7 @@ const construtores: ConstrutoresRender = {
   }),
   aresta: (a) => ({ id: a.id, source: a.de, target: a.para, type: "rough", data: { aresta: a } }),
   nota: (n) => ({ id: n.id, type: "nota", position: { x: n.x, y: n.y }, data: { conteudo: n.conteudo } }),
+  seta: (s) => ({ id: s.id, type: "seta-livre", position: { x: 0, y: 0 }, data: { tipo: s.tipo, pontos: s.pontos } }),
 };
 
 function ctx(usuarioId = "eu") {
@@ -180,4 +181,18 @@ test("nota não vira fantasma nem é confundida com origem de aresta", () => {
   const fantasmas = depois.nos.filter((n) => (n.data as DadosNo).fantasma);
   assert.deepEqual(fantasmas.map((n) => n.id), ["sumido"]);
   assert.ok(depois.nos.some((n) => n.id === "n1"), "nota sobreviveu à reconciliação");
+});
+
+test("seta livre faz upsert e preserva seleção, mas desaparece por seu próprio diff", () => {
+  const seta = { id: "s1", tipo: "linha" as const, pontos: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 80, y: 0 }] };
+  const criada = aplicarDiffRender(vazio(), { t: "seta-criada", seta }, ctx());
+  const selecionada = { ...criada, nos: [{ ...criada.nos[0], selected: true }] };
+  const mudada = aplicarDiffRender(
+    selecionada,
+    { t: "seta-mudou", seta: { ...seta, pontos: [...seta.pontos, { x: 120, y: 30 }] } },
+    ctx(),
+  );
+  assert.equal(mudada.nos[0].selected, true);
+  assert.equal(((mudada.nos[0].data as { pontos: unknown[] }).pontos).length, 4);
+  assert.equal(aplicarDiffRender(mudada, { t: "seta-apagada", seta }, ctx()).nos.length, 0);
 });

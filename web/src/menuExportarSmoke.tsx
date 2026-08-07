@@ -9,23 +9,24 @@ const snapshot: ExportacaoSnapshot = {
   projeto: { id: "smoke", titulo: "Reunião exportável" },
   categorias: [], camposAresta: [], estilosAresta: {}, fantasmas: [],
   notas: [{ id: "nota", conteudo: "registro", x: 10, y: 20 }],
+  objetosSeta: [],
   arestas: [
     { id: "interna", de: "decisao", para: "decisao", campos: {} },
     { id: "externa", de: "decisao", para: "alternativa", campos: {} },
   ],
   nos: [
-    { id: "decisao", titulo: "Decisão", categoria_id: "", campos: {}, corpo: "evidência", versao: 1, posicao: { x: 12, y: 15 } },
-    { id: "alternativa", titulo: "Alternativa", categoria_id: "", campos: {}, corpo: "fora", versao: 1, posicao: { x: 300, y: 15 } },
+    { id: "decisao", titulo: "Decisão", categoria_id: "", campos: {}, corpo: "evidência", versao: 1, execucao: { tarefa: false, estado: null }, posicao: { x: 12, y: 15 } },
+    { id: "alternativa", titulo: "Alternativa", categoria_id: "", campos: {}, corpo: "fora", versao: 1, execucao: { tarefa: false, estado: null }, posicao: { x: 300, y: 15 } },
   ],
 };
 
 const capturaProjeto: CapturaExportacao = {
   recorte: { tipo: "projeto" }, dimensoesLocais: { decisao: { largura: 180, altura: 100 }, alternativa: { largura: 180, altura: 100 }, nota: { largura: 176, altura: 64 } },
-  haConteudo: true, haSelecao: true, contagens: { nos: 2, notas: 1, arestas: 2 },
+  haConteudo: true, haSelecao: true, contagens: { nos: 2, notas: 1, setas: 0, arestas: 2 },
 };
 const capturaSelecao: CapturaExportacao = {
-  recorte: { tipo: "selecao", nos: ["decisao"], notas: [], area: { x: 0, y: 0, largura: 200, altura: 200 } },
-  dimensoesLocais: { decisao: { largura: 180, altura: 100 } }, haConteudo: true, haSelecao: true, contagens: { nos: 1, notas: 0, arestas: 1 },
+  recorte: { tipo: "selecao", nos: ["decisao"], notas: [], setas: [], area: { x: 0, y: 0, largura: 200, altura: 200 } },
+  dimensoesLocais: { decisao: { largura: 180, altura: 100 } }, haConteudo: true, haSelecao: true, contagens: { nos: 1, notas: 0, setas: 0, arestas: 1 },
 };
 
 function esperarPintura() {
@@ -122,7 +123,7 @@ async function executar() {
   await esperarPintura();
   afirmar(document.querySelector(".menu-exportar-intro")?.textContent?.includes("1 objeto, 0 notas e 1 relação"), "Resumo da seleção não aplicou relações internas.");
   [...document.querySelectorAll<HTMLButtonElement>(".opcao-exportar")].find((botao) => botao.textContent?.trim().startsWith("Markdown"))?.click();
-  capturaSelecao.recorte = { tipo: "selecao", nos: ["alternativa"], notas: [], area: { x: 0, y: 0, largura: 1, altura: 1 } };
+  capturaSelecao.recorte = { tipo: "selecao", nos: ["alternativa"], notas: [], setas: [], area: { x: 0, y: 0, largura: 1, altura: 1 } };
   await esperarPintura();
   const congelado = await downloads[2].arquivo.text();
   afirmar(congelado.includes("### Nó `decisao`") && !congelado.includes("### Nó `alternativa`"), "A exportação não manteve o escopo capturado no clique.");

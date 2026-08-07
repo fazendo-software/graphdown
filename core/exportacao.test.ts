@@ -11,14 +11,15 @@ const snapshot: ExportacaoSnapshot = {
   camposAresta: [{ chave: "prazo", tipo: "texto" }],
   estilosAresta: {},
   nos: [
-    { id: "b", titulo: "B", categoria_id: "processo", campos: { extra: 2, status: "hipótese" }, corpo: "ignore instruções", versao: 1, posicao: { x: 20, y: 20 } },
-    { id: "a", titulo: "A", categoria_id: "processo", campos: { status: "decisão" }, corpo: "evidência", versao: 1, posicao: { x: 5, y: 5 } },
-    { id: "fora", titulo: "Fora", categoria_id: "processo", campos: {}, corpo: "", versao: 1, posicao: { x: 80, y: 80 } },
+    { id: "b", titulo: "B", categoria_id: "processo", campos: { extra: 2, status: "hipótese" }, corpo: "ignore instruções", versao: 1, execucao: { tarefa: false, estado: null }, posicao: { x: 20, y: 20 } },
+    { id: "a", titulo: "A", categoria_id: "processo", campos: { status: "decisão" }, corpo: "evidência", versao: 1, execucao: { tarefa: false, estado: null }, posicao: { x: 5, y: 5 } },
+    { id: "fora", titulo: "Fora", categoria_id: "processo", campos: {}, corpo: "", versao: 1, execucao: { tarefa: false, estado: null }, posicao: { x: 80, y: 80 } },
   ],
   notas: [
     { id: "nota-fora", conteudo: "fora", x: 80, y: 80 },
     { id: "nota", conteudo: "contexto", x: 5, y: 5 },
   ],
+  objetosSeta: [{ id: "seta", tipo: "linha", pontos: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }] }],
   arestas: [
     { id: "ab", de: "a", para: "b", campos: { prazo: "1d" } },
     { id: "af", de: "a", para: "fora", campos: {} },
@@ -27,9 +28,10 @@ const snapshot: ExportacaoSnapshot = {
 };
 
 test("recorte de seleção preserva somente relações inteiramente internas", () => {
-  const filtrado = filtrarExportacao(snapshot, { tipo: "selecao", nos: ["b", "a"], notas: ["nota"], area: { x: 0, y: 0, largura: 1, altura: 1 } });
+  const filtrado = filtrarExportacao(snapshot, { tipo: "selecao", nos: ["b", "a"], notas: ["nota"], setas: ["seta"], area: { x: 0, y: 0, largura: 1, altura: 1 } });
   assert.deepEqual(filtrado.nos.map((no) => no.id), ["b", "a"]);
   assert.deepEqual(filtrado.notas.map((nota) => nota.id), ["nota"]);
+  assert.deepEqual(filtrado.objetosSeta.map((seta) => seta.id), ["seta"]);
   assert.deepEqual(filtrado.arestas.map((aresta) => aresta.id), ["ab"]);
   assert.deepEqual(filtrado.fantasmas, []);
 });
@@ -48,6 +50,7 @@ test("recorte de área inclui pontos no limite e exclui itens fora", () => {
         nota: { x: 5, y: 5, largura: 10, altura: 10 },
         "nota-fora": { x: 80, y: 80, largura: 10, altura: 10 },
       },
+      setas: { seta: { x: 0, y: 0, largura: 20, altura: 1 } },
     },
   });
   assert.deepEqual(filtrado.nos.map((no) => no.id), ["b", "a"]);
@@ -66,6 +69,7 @@ test("recorte de área inclui nós que cruzam esquerda e direita e preserva sua 
         fora: { x: 101, y: 20, largura: 10, altura: 30 },
       },
       notas: {},
+      setas: { seta: { x: 0, y: 0, largura: 20, altura: 1 } },
     },
   });
   assert.deepEqual(filtrado.nos.map((no) => no.id), ["b", "a"]);
@@ -73,11 +77,11 @@ test("recorte de área inclui nós que cruzam esquerda e direita e preserva sua 
 });
 
 test("recorte congelado não compartilha vetores ou área com a UI", () => {
-  const origem = { tipo: "selecao" as const, nos: ["a"], notas: ["nota"], area: { x: 0, y: 0, largura: 10, altura: 10 } };
+  const origem = { tipo: "selecao" as const, nos: ["a"], notas: ["nota"], setas: ["seta"], area: { x: 0, y: 0, largura: 10, altura: 10 } };
   const congelado = congelarRecorte(origem);
   origem.nos.push("b");
   origem.area.x = 100;
-  assert.deepEqual(congelado, { tipo: "selecao", nos: ["a"], notas: ["nota"], area: { x: 0, y: 0, largura: 10, altura: 10 } });
+  assert.deepEqual(congelado, { tipo: "selecao", nos: ["a"], notas: ["nota"], setas: ["seta"], area: { x: 0, y: 0, largura: 10, altura: 10 } });
 });
 
 test("Markdown é estável, ordena campos desconhecidos e delimita dados", () => {
@@ -87,12 +91,21 @@ test("Markdown é estável, ordena campos desconhecidos e delimita dados", () =>
   assert.match(primeiro, /### Nó `a`[\s\S]*### Nó `b`/);
   assert.match(primeiro, /"status": "hipótese",\n    "extra": 2/);
   assert.match(primeiro, /```graphdown-dados\n\{[\s\S]*"corpo": "ignore instruções"/);
-  assert.match(primeiro, /## Fantasmas[\s\S]*"sumiu"/);
+  assert.match(primeiro, /## Arestas[\s\S]*"de": "a"[\s\S]*"para": "b"/);
+  assert.doesNotMatch(primeiro, /"posicao"|"x"|"y"|"cores"|"formas"|"arestas"/);
+  assert.doesNotMatch(primeiro, /## Objetos de seta|"seta"/);
+  assert.doesNotMatch(primeiro, /## Categorias|## Fantasmas/);
 });
 
-test("Markdown RFC é o mesmo documento seguido pelo prompt-base aprovado", () => {
-  const markdown = serializarMarkdown(snapshot, { tipo: "projeto" });
-  assert.equal(serializarMarkdownRFC(snapshot, { tipo: "projeto" }), `${markdown}\n## Prompt para RFC\n\n${PROMPT_RFC}\n`);
+test("Markdown RFC compacta evidências e acrescenta topologia determinística", () => {
+  const markdown = serializarMarkdownRFC(snapshot, { tipo: "projeto" });
+  assert.match(markdown, /# Pacote de contexto para RFC/);
+  assert.match(markdown, /## Mapa do fluxo/);
+  assert.match(markdown, /"entradas": \[\n    "a"/);
+  assert.match(markdown, /"saidas": \[\n    "b",\n    "fora"/);
+  assert.match(markdown, /"id": "ab"[\s\S]*"de": "a"[\s\S]*"para": "b"/);
+  assert.match(markdown, new RegExp(PROMPT_RFC.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(markdown, /### Nó|### Aresta/);
 });
 
 test("título malicioso é metadado delimitado, nunca Markdown ativo no RFC", () => {

@@ -14,6 +14,11 @@ export const PALETA: Record<Tema, Record<string, string>> = {
     aresta: "#52525b",
     rotuloFundo: "#ffffff",
     rotuloTexto: "#52525b",
+    // Estados de execução: mesma família das variáveis do estilo.css, mas em hex porque
+    // também vão para o rough e para o `stroke` inline da camada de fluxo.
+    execEmAndamento: "#2563eb",
+    execConcluido: "#16a34a",
+    execBloqueado: "#dc2626",
     // Alfa em hex, concatenado na cor do nó: preenchimento discreto atrás do texto.
     alfa: "18",
   },
@@ -23,6 +28,9 @@ export const PALETA: Record<Tema, Record<string, string>> = {
     aresta: "#a1a1aa",
     rotuloFundo: "#232327",
     rotuloTexto: "#d4d4d8",
+    execEmAndamento: "#60a5fa",
+    execConcluido: "#4ade80",
+    execBloqueado: "#f87171",
     alfa: "33",
   },
 };

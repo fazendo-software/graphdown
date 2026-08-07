@@ -142,7 +142,7 @@ test("GET /grafo devolve titulo, as categorias do projeto e listas vazias num pr
     assert.equal(g.categorias[0].nome, "Processo");
     assert.deepEqual(
       g.categorias.map((c: { nome: string }) => c.nome).sort(),
-      ["Atores", "Dados", "Infraestrutura", "Processo", "Riscos e Controles"],
+      ["Atores", "Conteúdo incorporado", "Dados", "Infraestrutura", "Processo", "Riscos e Controles"],
     );
     assert.ok(g.categorias.every((c: { id?: string }) => c.id), "cada categoria traz seu id");
     // Estilos de seta e recursos são fundidos e valem para o projeto inteiro.
@@ -621,6 +621,39 @@ test("nota: leitor lê mas não escreve; id inválido dá 404, não 500", async 
   }
 });
 
+test("objeto de seta: persiste no grafo, edita pontos e restringe divisor", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const { cliente } = await registrar(base);
+    const p = await criarProjetoDeTeste(cliente);
+    const pontos = [{ x: 0, y: 0 }, { x: 80, y: 30 }, { x: 160, y: 30 }];
+    const criada = await cliente.post(`/api/projetos/${p}/objetos-seta`, { tipo: "seta", pontos });
+    assert.equal(criada.status, 201);
+    const seta = (await criada.json()) as { id: string; tipo: string; pontos: unknown[] };
+    assert.equal(seta.tipo, "seta");
+
+    const grafo = (await (await cliente.get(`/api/projetos/${p}/grafo`)).json()) as { objetosSeta: { id: string }[] };
+    assert.deepEqual(grafo.objetosSeta.map((s) => s.id), [seta.id]);
+
+    const mudada = await cliente.patch(`/api/projetos/${p}/objetos-seta/${seta.id}`, {
+      pontos: [...pontos, { x: 220, y: 90 }],
+    });
+    assert.equal(mudada.status, 200);
+    assert.equal(((await mudada.json()) as { pontos: unknown[] }).pontos.length, 4);
+
+    const invalida = await cliente.post(`/api/projetos/${p}/objetos-seta`, {
+      tipo: "divisor",
+      pontos,
+    });
+    assert.equal(invalida.status, 400);
+    assert.equal((await cliente.post(`/api/projetos/${p}/objetos-seta`, null)).status, 400);
+    assert.equal((await cliente.patch(`/api/projetos/${p}/objetos-seta/${seta.id}`, null)).status, 400);
+    assert.equal((await cliente.patch(`/api/projetos/${p}/objetos-seta/nao-e-uuid`, { pontos }).then((r) => r)).status, 404);
+  } finally {
+    await fechar();
+  }
+});
+
 test("POST /nos com categoria_id de outra categoria do projeto usa os campos dela", async () => {
   const { base, fechar } = await subirServidor();
   try {
@@ -751,3 +784,161 @@ test("seed é idempotente e atualiza a definição quando o YAML muda", async ()
     await fechar();
   }
 });
+
+test("nó nasce informativo e o PATCH normaliza tarefa sem estado para pendente", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const { cliente } = await registrar(base);
+    const p = await criarProjetoDeTeste(cliente);
+    const { id } = await (await cliente.post(`/api/projetos/${p}/nos`, { titulo: "Etapa" })).json();
+
+    const novo = await (await cliente.get(`/api/projetos/${p}/nos/${id}`)).json();
+    assert.deepEqual(novo.execucao, { tarefa: false, estado: null }, "migração não pode marcar tarefa por acidente");
+
+    const patch = await cliente.patch(`/api/projetos/${p}/nos/${id}`, { execucao: { tarefa: true } });
+    assert.equal(patch.status, 200);
+    assert.deepEqual((await patch.json()).no.execucao, { tarefa: true, estado: "pendente" });
+
+    const detalhe = await (await cliente.get(`/api/projetos/${p}/nos/${id}`)).json();
+    const g = await (await cliente.get(`/api/projetos/${p}/grafo`)).json();
+    assert.deepEqual(detalhe.execucao, { tarefa: true, estado: "pendente" });
+    assert.deepEqual(g.nos[0].execucao, { tarefa: true, estado: "pendente" }, "grafo e detalhe têm de coincidir");
+  } finally {
+    await fechar();
+  }
+});
+
+test("deixar de ser tarefa limpa o estado; estado sozinho preserva a marcação", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const { cliente } = await registrar(base);
+    const p = await criarProjetoDeTeste(cliente);
+    const { id } = await (await cliente.post(`/api/projetos/${p}/nos`, { titulo: "Etapa" })).json();
+
+    await cliente.patch(`/api/projetos/${p}/nos/${id}`, { execucao: { tarefa: true, estado: "em_andamento" } });
+    // Só o estado: `tarefa` ausente mantém o que já estava, PATCH é parcial aqui também.
+    const so = await (await cliente.patch(`/api/projetos/${p}/nos/${id}`, { execucao: { estado: "concluido" } })).json();
+    assert.deepEqual(so.no.execucao, { tarefa: true, estado: "concluido" });
+
+    const desmarcado = await (
+      await cliente.patch(`/api/projetos/${p}/nos/${id}`, { execucao: { tarefa: false } })
+    ).json();
+    assert.deepEqual(desmarcado.no.execucao, { tarefa: false, estado: null });
+  } finally {
+    await fechar();
+  }
+});
+
+test("PATCH recusa estado fora do enum e corpo de execução malformado", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const { cliente } = await registrar(base);
+    const p = await criarProjetoDeTeste(cliente);
+    const { id } = await (await cliente.post(`/api/projetos/${p}/nos`, { titulo: "Etapa" })).json();
+
+    for (const execucao of ["concluída", "CONCLUIDO", "", 3]) {
+      const r = await cliente.patch(`/api/projetos/${p}/nos/${id}`, { execucao: { tarefa: true, estado: execucao } });
+      assert.equal(r.status, 400, `estado inválido aceito: ${JSON.stringify(execucao)}`);
+    }
+    for (const execucao of ["tarefa", 1, [], { tarefa: "sim" }]) {
+      assert.equal((await cliente.patch(`/api/projetos/${p}/nos/${id}`, { execucao })).status, 400);
+    }
+    assert.equal((await cliente.patch(`/api/projetos/${p}/nos/${id}`, null)).status, 400);
+    assert.equal((await cliente.patch(`/api/projetos/${p}/nos/${id}`, {})).status, 400, "PATCH sem nada a mudar");
+
+    const intacto = await (await cliente.get(`/api/projetos/${p}/nos/${id}`)).json();
+    assert.deepEqual(intacto.execucao, { tarefa: false, estado: null }, "recusa não pode gravar nada");
+  } finally {
+    await fechar();
+  }
+});
+
+test("leitor não escreve execução: PATCH dá 403", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const dono = await registrar(base);
+    const p = await criarProjetoDeTeste(dono.cliente);
+    const { id } = await (await dono.cliente.post(`/api/projetos/${p}/nos`, { titulo: "Etapa" })).json();
+
+    const leitor = await registrar(base);
+    const pool = criarPool();
+    await pool.query("insert into projeto_membros (projeto_id, usuario_id, papel) values ($1, $2, 'leitor')", [
+      p,
+      leitor.usuarioId,
+    ]);
+    await pool.end();
+
+    const r = await leitor.cliente.patch(`/api/projetos/${p}/nos/${id}`, { execucao: { tarefa: true } });
+    assert.equal(r.status, 403);
+    const intacto = await (await leitor.cliente.get(`/api/projetos/${p}/nos/${id}`)).json();
+    assert.deepEqual(intacto.execucao, { tarefa: false, estado: null });
+  } finally {
+    await fechar();
+  }
+});
+
+test("título, campos e execução num único PATCH aterrissam juntos", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const { cliente } = await registrar(base);
+    const p = await criarProjetoDeTeste(cliente);
+    const { id } = await (
+      await cliente.post(`/api/projetos/${p}/nos`, { titulo: "Etapa", campos: { responsavel: "rh" } })
+    ).json();
+
+    await cliente.patch(`/api/projetos/${p}/nos/${id}`, {
+      titulo: "Etapa revisada",
+      campos: { status: "ativo" },
+      execucao: { tarefa: true, estado: "bloqueado" },
+    });
+
+    const no = await (await cliente.get(`/api/projetos/${p}/nos/${id}`)).json();
+    assert.equal(no.titulo, "Etapa revisada");
+    assert.equal(no.campos.responsavel, "rh", "campos continuam fundindo, não substituindo");
+    assert.equal(no.campos.status, "ativo");
+    assert.deepEqual(no.execucao, { tarefa: true, estado: "bloqueado" });
+  } finally {
+    await fechar();
+  }
+});
+
+test("PATCHs concorrentes preservam título e execução de ambos", async () => {
+  const { base, pool, fechar } = await subirServidor();
+  const bloqueio = await pool.connect();
+  try {
+    const { cliente } = await registrar(base);
+    const projetoId = await criarProjetoDeTeste(cliente);
+    const { id } = await (await cliente.post(`/api/projetos/${projetoId}/nos`, { titulo: "Etapa" })).json();
+
+    await bloqueio.query("begin");
+    await bloqueio.query("select 1 from nos where projeto_id = $1 and id = $2 for update", [projetoId, id]);
+    const caminho = `/api/projetos/${projetoId}/nos/${id}`;
+    const titulo = cliente.patch(caminho, { titulo: "Etapa revisada" });
+    await esperarBloqueios(pool, 1);
+    const execucao = cliente.patch(caminho, { execucao: { tarefa: true, estado: "concluido" } });
+    await esperarBloqueios(pool, 2);
+    await bloqueio.query("commit");
+
+    assert.equal((await titulo).status, 200);
+    assert.equal((await execucao).status, 200);
+    const no = await (await cliente.get(caminho)).json();
+    assert.equal(no.titulo, "Etapa revisada");
+    assert.deepEqual(no.execucao, { tarefa: true, estado: "concluido" });
+  } finally {
+    await bloqueio.query("rollback").catch(() => undefined);
+    bloqueio.release();
+    await fechar();
+  }
+});
+
+async function esperarBloqueios(pool: ReturnType<typeof criarPool>, minimo: number): Promise<void> {
+  const limite = Date.now() + 2_000;
+  while (Date.now() < limite) {
+    const r = await pool.query<{ total: string }>(
+      "select count(*)::text as total from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query ilike '%nos%'",
+    );
+    if (Number(r.rows[0]?.total) >= minimo) return;
+    await new Promise((ok) => setTimeout(ok, 10));
+  }
+  throw new Error(`PATCH não entrou na fila de lock (${minimo})`);
+}

@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { MsgServidor, No, Nota, Posicao } from "../../core/tipos.ts";
+import type { MsgServidor, No, Nota, ObjetoSeta, Posicao } from "../../core/tipos.ts";
 import type { ArestaComId } from "./api.ts";
 import type { DadosNo } from "./NoProcesso.tsx";
 
@@ -17,6 +17,7 @@ export type ConstrutoresRender = {
   noFantasma: (id: string, posicao: Posicao) => Node;
   aresta: (a: ArestaComId) => Edge;
   nota: (n: Nota) => Node;
+  seta: (s: ObjetoSeta) => Node;
 };
 
 /** Origem sem nó real em `nos` vira fantasma — recomputado após qualquer diff estrutural. */
@@ -114,6 +115,18 @@ export function aplicarDiffRender(prev: RenderState, msg: MsgServidor, ctx: Cont
     }
     case "nota-apagada":
       return { ...prev, nos: prev.nos.filter((n) => n.id !== msg.nota.id) };
+    // Seta livre é um nó do React Flow apenas para herdar seleção/arraste/delete. Diferente
+    // de nota, sua caixa deriva dos pontos e não pode preservar width/height antigo.
+    case "seta-criada":
+    case "seta-mudou": {
+      const antes = prev.nos.find((n) => n.id === msg.seta.id);
+      return {
+        ...prev,
+        nos: [...prev.nos.filter((n) => n.id !== msg.seta.id), { ...c.seta(msg.seta), selected: antes?.selected }],
+      };
+    }
+    case "seta-apagada":
+      return { ...prev, nos: prev.nos.filter((n) => n.id !== msg.seta.id) };
     default:
       return prev;
   }

@@ -5,19 +5,21 @@ import { buscarProjeto } from "./projetos.ts";
 import { listarNos, buscarLayout } from "./nos.ts";
 import { listarArestas, calcularFantasmas } from "./arestas.ts";
 import { listarNotas } from "./notas.ts";
+import { listarObjetosSeta } from "./objetosSeta.ts";
 
 export async function montarGrafo(pool: Pool, projetoId: string) {
   const projeto = await buscarProjeto(pool, projetoId);
   if (!projeto) return null;
   // Notas vêm no mesmo snapshot: o canvas monta tudo numa requisição só, tanto na
   // abertura quanto na reconexão do WS.
-  const [categorias, nos, arestas, fantasmas, layout, notas] = await Promise.all([
+  const [categorias, nos, arestas, fantasmas, layout, notas, objetosSeta] = await Promise.all([
     categoriasDoProjeto(pool, projetoId),
     listarNos(pool, projetoId),
     listarArestas(pool, projetoId),
     calcularFantasmas(pool, projetoId),
     buscarLayout(pool, projetoId),
     listarNotas(pool, projetoId),
+    listarObjetosSeta(pool, projetoId),
   ]);
   return {
     titulo: projeto.nome,
@@ -31,5 +33,6 @@ export async function montarGrafo(pool: Pool, projetoId: string) {
     fantasmas,
     layout,
     notas,
+    objetosSeta,
   };
 }

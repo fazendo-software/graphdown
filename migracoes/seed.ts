@@ -16,6 +16,7 @@ const ARQUIVOS = [
   "atores.yaml",
   "infraestrutura.yaml",
   "riscos.yaml",
+  "embed.yaml",
 ];
 
 /**

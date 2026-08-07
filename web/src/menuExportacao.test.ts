@@ -15,7 +15,7 @@ test("recorte alternativo comunica seleção ou viewport sem ambiguidade", () =>
 });
 
 test("resumo usa plural correto e erro de rede não vaza texto técnico", () => {
-  assert.equal(resumoContagens({ nos: 1, notas: 0, arestas: 2 }), "1 objeto, 0 notas e 2 relações");
+  assert.equal(resumoContagens({ nos: 1, notas: 0, setas: 0, arestas: 2 }), "1 objeto, 0 notas e 2 relações");
   assert.match(mensagemErroExportacao(new TypeError("Failed to fetch")), /Verifique sua conexão/);
   assert.doesNotMatch(mensagemErroExportacao(new TypeError("Failed to fetch")), /Failed to fetch/);
 });

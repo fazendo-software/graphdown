@@ -5,6 +5,7 @@ export function parseCategoria(texto: string): Categoria {
   const cru = (parse(texto) ?? {}) as Partial<Categoria>;
   return {
     nome: cru.nome ?? "Sem nome",
+    incorporavel: cru.incorporavel === true,
     campos: Array.isArray(cru.campos) ? (cru.campos as CampoCategoria[]) : [],
     cor_por: cru.cor_por,
     cores: cru.cores,
