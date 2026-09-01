@@ -18,7 +18,7 @@ import {
 } from "./arquivos.ts";
 import { assinarEventos } from "./watcher.ts";
 
-const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
+const RAIZ = process.env.GRAPYDOWN_APP_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), "..");
 const WEB = join(RAIZ, "web", "dist");
 
 const MIME: Record<string, string> = {

@@ -2,13 +2,19 @@
   "name": "grapydown",
   "version": "0.1.0",
   "type": "module",
-  "bin": { "grapydown": "./servidor/index.ts" },
+  "main": "electron/dist/main.js",
+  "bin": {
+    "grapydown": "./servidor/index.ts"
+  },
   "scripts": {
     "test": "node --experimental-strip-types --test \"core/*.test.ts\" \"servidor/*.test.ts\" \"web/src/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc -p web --noEmit",
     "dev:web": "vite --config web/vite.config.ts",
     "build:web": "vite build --config web/vite.config.ts",
-    "serve": "node --experimental-strip-types servidor/index.ts serve"
+    "serve": "node --experimental-strip-types servidor/index.ts serve",
+    "build:electron": "npm run build:web && vite build --config electron/vite.config.ts",
+    "start:electron": "npm run build:electron && electron electron/dist/main.js",
+    "dist:electron": "npm run build:electron && electron-builder"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
@@ -26,7 +32,23 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
+    "electron": "^44.1.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "com.grapydown.app",
+    "productName": "Grapydown",
+    "asar": true,
+    "files": [
+      "electron/dist/**",
+      "web/dist/**",
+      "categorias/**",
+      "package.json"
+    ],
+    "linux": { "target": ["AppImage"] },
+    "win": { "target": ["nsis"] },
+    "mac": { "target": ["dmg"] }
   }
 }

@@ -1,5 +1,7 @@
 node_modules/
 web/dist/
+electron/dist/
+dist/
 *.tmp
 .grapydown/trash/
 

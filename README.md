@@ -13,7 +13,7 @@ Node 22.13 ou maior. O TypeScript roda direto, sem build: os comandos abaixo pas
 ```bash
 npm install
 npm run build:web
-npm run serve exemplo/onboarding
+npm run serve caminho/para/grafo
 ```
 
 Abre em `http://localhost:5174` (mude com `PORTA=...`).
@@ -21,9 +21,18 @@ Abre em `http://localhost:5174` (mude com `PORTA=...`).
 Desenvolvimento, com recarga do front:
 
 ```bash
-npm run serve exemplo/onboarding   # terminal 1
+npm run serve caminho/para/grafo  # terminal 1
 npm run dev:web                    # terminal 2, abre em :5173 com proxy para :5174
 ```
+
+## Desktop (Electron)
+
+```bash
+npm run start:electron
+```
+
+O aplicativo pede a pasta do grafo ao abrir. Para gerar o pacote nativo do
+sistema atual, rode `npm run dist:electron`; os arquivos saem em `dist/`.
 
 ## Estrutura de uma pasta
 
