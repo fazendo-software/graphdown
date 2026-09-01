@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import { atualizarCorpo } from "./nos.ts";
 
 test("atualizarCorpo não quebra quando o nó é apagado durante a gravação", async () => {

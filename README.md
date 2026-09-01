@@ -1,14 +1,23 @@
 # grapydown
 
-Editor de grafos de processo, multiusuário, em tempo real. Cada projeto vive no Postgres;
+Editor de grafos de processo, em tempo real. Cada projeto vive em SQLite local;
 o canvas desenha com traço à mão, e clicar num nó abre os dados estruturados.
 
 ## Requisitos
 
-Node 22.13 ou maior (roda TypeScript direto, sem build — `--experimental-strip-types`) e
-Postgres 16.
+Node 22.13 ou maior (roda TypeScript direto, sem build — `--experimental-strip-types`).
 
-## Uso com Docker (recomendado)
+## AppImage (Linux)
+
+```bash
+npm install
+npm run dist:electron
+```
+
+O arquivo `dist/Grapydown-*.AppImage` guarda o banco em `~/.config/grapydown/`; não exige
+Postgres nem configuração. A primeira execução cria o banco e as categorias padrão.
+
+## Uso com Docker
 
 ```bash
 cp .env.exemplo .env   # preencha COOKIE_SECRET
@@ -23,7 +32,6 @@ categoria rodam automaticamente antes do servidor escutar.
 ```bash
 npm install
 npm run build:web
-export DATABASE_URL=postgres://usuario:senha@localhost:5432/grapydown
 export COOKIE_SECRET=$(node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))")
 npm run serve
 ```
@@ -41,7 +49,7 @@ Conta (e-mail + senha) entra num projeto como `dono`, `editor` ou `leitor`. Proj
 categoria (`GET /api/categorias`), que define os campos do formulário e a cor/forma do nó —
 `categorias/processo.yaml` é semeado automaticamente na primeira subida.
 
-Nó e aresta vivem em tabelas Postgres (`nos`, `arestas`), não mais em arquivo `.md`. Apagar é
+Nó e aresta vivem no banco SQLite local (`nos`, `arestas`), não mais em arquivo `.md`. Apagar é
 soft delete (`apagado_em`) — sem lixeira, sem restauração pela UI. Posição do nó (`pos_x`,
 `pos_y`) e presença de colaboração (quem está no canvas, quem está editando) viajam por
 WebSocket (`GET /ws?projeto=<id>`); mutação de estrutura (nó, aresta, campo) é HTTP numa
@@ -80,19 +88,13 @@ Ver `.traycer` (artefatos do epic) para o contrato completo de schema, rotas e p
 
 `PATCH /api/projetos/:projeto/nos/:no` aceita `{ titulo }`, `{ campos }` ou ambos. As
 alterações de nó e aresta tratam itens que desapareceram durante a operação como `404`, e
-`PATCH`/`DELETE` de aresta validam o UUID antes de consultar o Postgres.
+`PATCH`/`DELETE` de aresta validam o UUID antes de consultar o banco.
 
 ## Testes
 
-Precisam de um Postgres acessível em `DATABASE_URL` (schema aplicado automaticamente pelos
-próprios testes). Local rápido:
+O schema SQLite é aplicado automaticamente pelos próprios testes:
 
 ```bash
-docker run -d --rm --name grapydown-test-pg -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=grapydown_test -p 55432:5432 postgres:16-alpine
-
-export DATABASE_URL=postgres://postgres:postgres@localhost:55432/grapydown_test
-export COOKIE_SECRET=segredo-de-teste
 npm test
 npm run typecheck
 ```

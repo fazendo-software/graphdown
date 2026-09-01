@@ -1,10 +1,12 @@
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import type { Aresta } from "../core/tipos.ts";
 
 export type ArestaComId = Aresta & { id: string };
 
-const CODIGO_UNIQUE_VIOLATION = "23505";
-const CODIGO_FOREIGN_KEY_VIOLATION = "23503";
+function codigo(erro: unknown): string | number | undefined {
+  const e = erro as { code?: string; errcode?: number };
+  return e.errcode ?? e.code;
+}
 
 export async function listarArestas(pool: Pool, projetoId: string): Promise<ArestaComId[]> {
   const r = await pool.query<ArestaComId>(
@@ -45,8 +47,8 @@ export async function criarAresta(
     );
     return { id: r.rows[0].id };
   } catch (erro) {
-    if ((erro as { code?: string }).code === CODIGO_UNIQUE_VIOLATION) return { conflito: true };
-    if ((erro as { code?: string }).code === CODIGO_FOREIGN_KEY_VIOLATION) return { naoEncontrada: true };
+    if (["23505", 2067].includes(codigo(erro) as never)) return { conflito: true };
+    if (["23503", 787].includes(codigo(erro) as never)) return { naoEncontrada: true };
     throw erro;
   }
 }

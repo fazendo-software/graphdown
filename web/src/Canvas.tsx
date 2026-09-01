@@ -18,7 +18,7 @@ import {
 } from "@xyflow/react";
 import { congelarRecorte } from "../../core/exportacao.ts";
 import type { MsgServidor, Nota, ObjetoSeta, Papel, Posicao, Projeto, RecorteExportacao, Retangulo, Usuario } from "../../core/tipos.ts";
-import { apiProjeto, type ArestaComId } from "./api.ts";
+import { apiProjeto, apiProjetos, type ArestaComId } from "./api.ts";
 import { conectarWS, type ConexaoWS } from "./ws.ts";
 import { aplicarDiffRender, preservarDimensoes, type RenderState } from "./diffGrafo.ts";
 import { progressoDoRender } from "./progressoRender.ts";
@@ -763,8 +763,19 @@ export function Canvas({ projetoId, papel, usuario, aoTrocarProjeto, aoVoltar, a
             titulo={titulo}
             projetoId={projetoId}
             usuario={usuario}
+            podeRenomear={papel === "dono"}
             aoTrocar={aoTrocarProjeto}
             aoNovoProjeto={aoVoltar}
+            aoRenomear={() => void (async () => {
+              const nome = (await pedirTexto("novo nome do projeto:"))?.trim();
+              if (!nome) return;
+              try {
+                await apiProjetos.renomear(projetoId, nome);
+                setTitulo(nome);
+              } catch (e) {
+                setFalha((e as Error).message);
+              }
+            })()}
             aoSairDaConta={aoSairDaConta}
           />
           <nav className="navegacao-canvas" aria-label="áreas do canvas">

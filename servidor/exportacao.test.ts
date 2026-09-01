@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import { montarExportacao } from "./exportacao.ts";
 
 test("snapshot abre transação repetível somente leitura e traz todos os corpos numa consulta", async () => {

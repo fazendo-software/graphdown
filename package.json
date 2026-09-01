@@ -2,6 +2,7 @@
   "name": "grapydown",
   "version": "0.1.0",
   "type": "module",
+  "main": "electron/dist/main.js",
   "bin": {
     "grapydown": "./servidor/index.ts"
   },
@@ -11,7 +12,10 @@
     "typecheck": "tsc --noEmit && tsc -p web --noEmit",
     "dev:web": "vite --config web/vite.config.ts",
     "build:web": "vite build --config web/vite.config.ts",
-    "serve": "node --experimental-strip-types servidor/index.ts serve"
+    "serve": "node --experimental-strip-types servidor/index.ts serve",
+    "build:electron": "npm run build:web && vite build --config electron/vite.config.ts",
+    "start:electron": "npm run build:electron && electron electron/dist/main.js",
+    "dist:electron": "npm run build:electron && electron-builder"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
@@ -19,7 +23,6 @@
     "html-to-image": "^1.11.13",
     "jspdf": "^4.2.1",
     "markdown-it": "^14.1.0",
-    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "roughjs": "^4.6.6",
@@ -29,13 +32,21 @@
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.9.0",
-    "@types/pg": "^8.20.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.3",
+    "electron": "^44.1.0",
+    "electron-builder": "^26.15.3",
     "playwright-core": "^1.62.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "com.grapydown.app",
+    "productName": "Grapydown",
+    "asar": true,
+    "files": ["electron/dist/**", "web/dist/**", "categorias/**", "package.json"],
+    "linux": { "target": ["AppImage"] }
   }
 }

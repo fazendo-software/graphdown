@@ -1,4 +1,4 @@
-import type { Pool, PoolClient } from "pg";
+import type { Pool, PoolClient } from "./db.ts";
 import type { Aresta, Categoria, CategoriaComId, EstadoExecucao, Layout, No, ResultadoBusca } from "../core/tipos.ts";
 import { camposPadrao, idDeTitulo, validarCampos } from "../core/categoria.ts";
 
@@ -30,37 +30,20 @@ function paraNo(linha: LinhaNo): No {
   };
 }
 
-/**
- * Busca textual no projeto aberto, sobre a coluna gerada `nos.busca_tsv` (título + corpo +
- * campos) e o índice GIN que já existem desde a migração inicial.
- *
- * `websearch_to_tsquery` e não `to_tsquery`: o texto vem de um campo de busca, então é
- * arbitrário — `to_tsquery` levanta exceção em `"a & "` ou `"!!!"`, `websearch` nunca quebra.
- *
- * O `ilike` ao lado existe porque full-text não casa prefixo (`proc` não acha `processo`),
- * que é o caso comum enquanto se digita. Ele cobre prefixo no título; o tsvector cobre corpo
- * e campos. Quem casa só pelo `ilike` tem rank zero e cai para o fim — ordem secundária é o
- * título.
- *
- * `StartSel`/`StopSel` viram `«»` de propósito: o padrão do `ts_headline` é `<b>`/`</b>` e ele
- * **não escapa** o resto do texto — corpo com `<script>` sairia intacto. Com marcador que não
- * é HTML, o front renderiza `trecho` como texto puro e o problema não existe.
- */
 export async function buscarNos(pool: Pool, projetoId: string, q: string): Promise<ResultadoBusca[]> {
   const termo = q.trim();
   if (!termo) return [];
   // `%` e `_` digitados pelo usuário são literais, não curingas.
   const like = `%${termo.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  // ponytail: LIKE faz varredura linear; trocar por FTS5 quando projetos grandes a tornarem mensurável.
   const r = await pool.query<ResultadoBusca>(
-    `select n.id, n.titulo,
-            ts_headline('portuguese', n.titulo || ' ' || n.corpo, c.q,
-                        'MaxFragments=1, MaxWords=14, MinWords=5, StartSel=«, StopSel=»') as trecho
-       from nos n, websearch_to_tsquery('portuguese', $2) as c(q)
-      where n.projeto_id = $1 and n.apagado_em is null
-        and (n.busca_tsv @@ c.q or n.titulo ilike $3)
-      order by ts_rank(n.busca_tsv, c.q) desc, n.titulo
+    `select id, titulo, substr(titulo || ' ' || corpo, 1, 160) as trecho
+       from nos
+      where projeto_id = $1 and apagado_em is null
+        and lower(titulo || ' ' || corpo || ' ' || campos) like lower($2) escape '\\'
+      order by titulo
       limit 30`,
-    [projetoId, termo, like],
+    [projetoId, like],
   );
   return r.rows;
 }

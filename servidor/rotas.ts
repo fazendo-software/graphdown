@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server } 
 import { readFile } from "node:fs/promises";
 import { extname, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import type { EstadoExecucao, Papel, Posicao } from "../core/tipos.ts";
 import { ESTADOS_EXECUCAO } from "../core/tipos.ts";
 import { ehTipoObjetoSeta, pontosObjetoSetaValidos } from "../core/objetosSeta.ts";
@@ -19,7 +19,7 @@ import {
 } from "./auth.ts";
 import { resolverMembership } from "./membros.ts";
 import { listarCategorias, buscarCategoriaPorId, categoriaDoProjeto } from "./categorias.ts";
-import { apagarProjeto, buscarProjeto, criarProjeto, listarProjetos } from "./projetos.ts";
+import { apagarProjeto, buscarProjeto, criarProjeto, listarProjetos, renomearProjeto } from "./projetos.ts";
 import { montarGrafo } from "./grafo.ts";
 import { montarExportacao } from "./exportacao.ts";
 import { apagarNo, atualizarCorpo, atualizarNo, buscarNo, buscarNos, criarNo, type PatchNo } from "./nos.ts";
@@ -29,7 +29,7 @@ import { apagarObjetoSeta, atualizarObjetoSeta, buscarObjetoSeta, criarObjetoSet
 import { corpoJson, ErroPayloadGrande, origemPermitida } from "./seguranca.ts";
 import type { SalaProjetos } from "./ws.ts";
 
-const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
+const RAIZ = process.env.GRAPYDOWN_APP_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), "..");
 const WEB = join(RAIZ, "web", "dist");
 
 const MIME: Record<string, string> = {
@@ -170,6 +170,17 @@ async function lidar(req: IncomingMessage, res: ServerResponse, pool: Pool, sala
   }
 
   const mProjeto = rota.match(/^\/api\/projetos\/([^/]+)$/);
+  if (mProjeto && metodo === "PATCH") {
+    const projetoId = mProjeto[1];
+    const ctx = await exigirProjeto(req, res, pool, projetoId);
+    if (!ctx) return;
+    if (ctx.papel !== "dono") return json(res, 403, { erro: "só o dono renomeia o projeto" });
+    const { nome } = (await corpoJson(req)) as { nome?: string };
+    if (!nome?.trim()) return json(res, 400, { erro: "nome obrigatório" });
+    if (!(await renomearProjeto(pool, projetoId, nome.trim()))) return json(res, 404, { erro: "projeto não encontrado" });
+    return json(res, 200, { ok: true });
+  }
+
   if (mProjeto && metodo === "DELETE") {
     const projetoId = mProjeto[1];
     const ctx = await exigirProjeto(req, res, pool, projetoId);
@@ -475,7 +486,8 @@ async function registrar(req: IncomingMessage, res: ServerResponse, pool: Pool):
     );
     usuario = { id: r.rows[0].id, nome, email };
   } catch (erro) {
-    if ((erro as { code?: string }).code === "23505") {
+    const codigo = (erro as { code?: string; errcode?: number }).errcode ?? (erro as { code?: string }).code;
+    if (codigo === "23505" || codigo === 2067) {
       return json(res, 409, { erro: "email já cadastrado" });
     }
     throw erro;

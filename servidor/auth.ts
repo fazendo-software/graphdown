@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import type { IncomingMessage } from "node:http";
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import type { Usuario } from "../core/tipos.ts";
 
 const scrypt = promisify(scryptCb) as (

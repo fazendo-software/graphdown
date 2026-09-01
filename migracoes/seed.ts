@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Pool, PoolClient } from "pg";
+import type { Pool, PoolClient } from "../servidor/db.ts";
 import { parseCategoria } from "../core/categoria.ts";
 
-const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
+const RAIZ = process.env.GRAPYDOWN_APP_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const CHAVE_LOCK = 727_478_327; // mesma família da chave de migracoes/runner.ts, valor diferente
 
@@ -60,6 +60,7 @@ async function semearArquivo(cliente: PoolClient, arquivo: string, ordem: number
   await cliente.query(
     `insert into projeto_categorias (projeto_id, categoria_id, ordem)
      select p.id, $1, case when p.categoria_id = $1 then 0 else $2 + 1 end from projetos p
+     where true
      on conflict do nothing`,
     [id, ordem],
   );
@@ -69,9 +70,9 @@ async function semearArquivo(cliente: PoolClient, arquivo: string, ordem: number
  * viraria "valor fora das opções de tipo" na próxima validação. */
 async function religarAtores(cliente: PoolClient): Promise<void> {
   await cliente.query(
-    `update nos n
-        set categoria_id = a.id, atualizado_em = now()
-       from categorias a
-      where a.nome = 'Atores' and n.campos->>'tipo' = 'ator' and n.categoria_id <> a.id`,
+    `update nos
+        set categoria_id = (select id from categorias where nome = 'Atores'), atualizado_em = now()
+      where json_extract(campos, '$.tipo') = 'ator'
+        and categoria_id <> (select id from categorias where nome = 'Atores')`,
   );
 }

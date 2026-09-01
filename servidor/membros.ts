@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import type { Papel } from "../core/tipos.ts";
 
 /** `null` quando o usuário não é membro — rota trata isso como 404, nunca 403. */

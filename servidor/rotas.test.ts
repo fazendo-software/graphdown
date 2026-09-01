@@ -131,6 +131,24 @@ test("POST /projetos cria membership dono; GET /projetos lista com o papel", asy
   }
 });
 
+test("dono renomeia projeto; editor não", async () => {
+  const { base, fechar } = await subirServidor();
+  try {
+    const dono = await registrar(base);
+    const projetoId = await criarProjetoDeTeste(dono.cliente);
+    assert.equal((await dono.cliente.patch(`/api/projetos/${projetoId}`, { nome: "Renomeado" })).status, 200);
+    assert.equal((await (await dono.cliente.get("/api/projetos")).json()).find((p: { id: string }) => p.id === projetoId).nome, "Renomeado");
+
+    const editor = await registrar(base);
+    const pool = criarPool();
+    await pool.query("insert into projeto_membros (projeto_id, usuario_id, papel) values ($1, $2, 'editor')", [projetoId, editor.usuarioId]);
+    await pool.end();
+    assert.equal((await editor.cliente.patch(`/api/projetos/${projetoId}`, { nome: "Negado" })).status, 403);
+  } finally {
+    await fechar();
+  }
+});
+
 test("GET /grafo devolve titulo, as categorias do projeto e listas vazias num projeto novo", async () => {
   const { base, fechar } = await subirServidor();
   try {
@@ -903,42 +921,24 @@ test("título, campos e execução num único PATCH aterrissam juntos", async ()
 });
 
 test("PATCHs concorrentes preservam título e execução de ambos", async () => {
-  const { base, pool, fechar } = await subirServidor();
-  const bloqueio = await pool.connect();
+  const { base, fechar } = await subirServidor();
   try {
     const { cliente } = await registrar(base);
     const projetoId = await criarProjetoDeTeste(cliente);
     const { id } = await (await cliente.post(`/api/projetos/${projetoId}/nos`, { titulo: "Etapa" })).json();
 
-    await bloqueio.query("begin");
-    await bloqueio.query("select 1 from nos where projeto_id = $1 and id = $2 for update", [projetoId, id]);
     const caminho = `/api/projetos/${projetoId}/nos/${id}`;
-    const titulo = cliente.patch(caminho, { titulo: "Etapa revisada" });
-    await esperarBloqueios(pool, 1);
-    const execucao = cliente.patch(caminho, { execucao: { tarefa: true, estado: "concluido" } });
-    await esperarBloqueios(pool, 2);
-    await bloqueio.query("commit");
+    const [titulo, execucao] = await Promise.all([
+      cliente.patch(caminho, { titulo: "Etapa revisada" }),
+      cliente.patch(caminho, { execucao: { tarefa: true, estado: "concluido" } }),
+    ]);
 
-    assert.equal((await titulo).status, 200);
-    assert.equal((await execucao).status, 200);
+    assert.equal(titulo.status, 200);
+    assert.equal(execucao.status, 200);
     const no = await (await cliente.get(caminho)).json();
     assert.equal(no.titulo, "Etapa revisada");
     assert.deepEqual(no.execucao, { tarefa: true, estado: "concluido" });
   } finally {
-    await bloqueio.query("rollback").catch(() => undefined);
-    bloqueio.release();
     await fechar();
   }
 });
-
-async function esperarBloqueios(pool: ReturnType<typeof criarPool>, minimo: number): Promise<void> {
-  const limite = Date.now() + 2_000;
-  while (Date.now() < limite) {
-    const r = await pool.query<{ total: string }>(
-      "select count(*)::text as total from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query ilike '%nos%'",
-    );
-    if (Number(r.rows[0]?.total) >= minimo) return;
-    await new Promise((ok) => setTimeout(ok, 10));
-  }
-  throw new Error(`PATCH não entrou na fila de lock (${minimo})`);
-}

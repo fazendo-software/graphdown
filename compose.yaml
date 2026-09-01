@@ -4,27 +4,12 @@ services:
     ports:
       - "${PORTA:-5174}:5174"
     environment:
-      DATABASE_URL: postgres://grapydown:${POSTGRES_SENHA:-grapydown}@db:5432/grapydown
       COOKIE_SECRET: ${COOKIE_SECRET:?defina COOKIE_SECRET no .env}
+      GRAPYDOWN_DATABASE: /dados/grapydown.sqlite
       PORTA: 5174
       NODE_ENV: production
-    depends_on:
-      db:
-        condition: service_healthy
-
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: grapydown
-      POSTGRES_PASSWORD: ${POSTGRES_SENHA:-grapydown}
-      POSTGRES_DB: grapydown
     volumes:
-      - dados_postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U grapydown"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - dados:/dados
 
 volumes:
-  dados_postgres:
+  dados:

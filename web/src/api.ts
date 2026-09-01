@@ -94,6 +94,11 @@ export const apiProjetos = {
       method: "POST",
       body: JSON.stringify({ nome, categoria_id: categoriaId }),
     }),
+  renomear: (id: string, nome: string) =>
+    pedir<{ ok: true }>(`/api/projetos/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ nome }),
+    }),
   apagar: (id: string) =>
     pedir<{ ok: true }>(`/api/projetos/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };

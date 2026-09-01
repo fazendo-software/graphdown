@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import { fundirArestas, fundirCamposAresta } from "../core/categoria.ts";
 import type {
   Aresta,
@@ -60,10 +60,13 @@ export async function montarExportacao(pool: Pool, projetoId: string): Promise<E
     // pontas para que o contrato permaneça correto diante de dados legados.
     const fantasmas = await cliente.query<{ id: string }>(
       `select distinct pontas.id
-         from arestas a
-         cross join lateral (values (a.de), (a.para)) as pontas(id)
-         left join nos n on n.projeto_id = a.projeto_id and n.id = pontas.id and n.apagado_em is null
-        where a.projeto_id = $1 and a.apagado_em is null and n.id is null
+         from (
+           select de as id from arestas where projeto_id = $1 and apagado_em is null
+           union all
+           select para as id from arestas where projeto_id = $1 and apagado_em is null
+         ) pontas
+         left join nos n on n.projeto_id = $1 and n.id = pontas.id and n.apagado_em is null
+        where n.id is null
         order by pontas.id`,
       [projetoId],
     );

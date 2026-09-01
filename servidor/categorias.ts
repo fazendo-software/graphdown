@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import type { Categoria, CategoriaComId, CategoriaResumo } from "../core/tipos.ts";
 
 /** As categorias que o projeto usa, principal primeiro. A ordem é contrato: a barra lateral

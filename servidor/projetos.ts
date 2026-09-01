@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import type { Projeto } from "../core/tipos.ts";
 import { buscarCategoriaPorId } from "./categorias.ts";
 
@@ -55,6 +55,11 @@ export async function criarProjeto(
 
 export async function apagarProjeto(pool: Pool, id: string): Promise<void> {
   await pool.query("delete from projetos where id = $1", [id]);
+}
+
+export async function renomearProjeto(pool: Pool, id: string, nome: string): Promise<boolean> {
+  const r = await pool.query("update projetos set nome = $2 where id = $1", [id, nome]);
+  return r.rowCount > 0;
 }
 
 export async function buscarProjeto(pool: Pool, id: string): Promise<{ nome: string; categoriaId: string } | null> {

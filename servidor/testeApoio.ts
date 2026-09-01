@@ -1,14 +1,16 @@
 // Apoio compartilhado pelos testes de servidor/*.test.ts — não é teste em si (sem *.test.ts
 // no nome), então o glob do `npm test` não tenta rodá-lo sozinho.
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Pool } from "./db.ts";
 import { migrar } from "../migracoes/runner.ts";
 import { semear } from "../migracoes/seed.ts";
 import { criarPool } from "./db.ts";
 import { criarServidor } from "./rotas.ts";
 import { SalaProjetos } from "./ws.ts";
 
-process.env.DATABASE_URL ??= "postgres://postgres:postgres@localhost:55432/grapydown_test";
+process.env.GRAPYDOWN_DATABASE ??= join(tmpdir(), `grapydown-test-${process.pid}.sqlite`);
 process.env.COOKIE_SECRET ??= "segredo-de-teste-nao-usar-em-producao";
 
 export type ServidorDeTeste = {

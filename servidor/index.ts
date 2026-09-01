@@ -12,11 +12,9 @@ if (comando !== "serve") {
   process.exit(1);
 }
 
-for (const nome of ["DATABASE_URL", "COOKIE_SECRET"]) {
-  if (!process.env[nome]) {
-    console.error(`variável de ambiente ausente: ${nome}`);
-    process.exit(1);
-  }
+if (!process.env.COOKIE_SECRET) {
+  console.error("variável de ambiente ausente: COOKIE_SECRET");
+  process.exit(1);
 }
 
 const porta = Number(process.env.PORTA ?? 5174);

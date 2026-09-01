@@ -1,7 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import type { MsgCliente, MsgServidor, Papel } from "../core/tipos.ts";
 import { resolverSessao } from "./auth.ts";
 import { resolverMembership } from "./membros.ts";

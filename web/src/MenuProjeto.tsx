@@ -6,14 +6,16 @@ type Props = {
   titulo: string;
   projetoId: string;
   usuario: Usuario;
+  podeRenomear: boolean;
   aoTrocar: (projeto: Projeto) => void;
   aoNovoProjeto: () => void;
+  aoRenomear: () => void;
   aoSairDaConta: () => void;
 };
 
 /** Dropdown do projeto aberto: trocar sem desmontar o canvas. A criação continua morando
  * no `SeletorProjetos` — daqui só se chega até lá, sem duplicar o formulário. */
-export function MenuProjeto({ titulo, projetoId, usuario, aoTrocar, aoNovoProjeto, aoSairDaConta }: Props) {
+export function MenuProjeto({ titulo, projetoId, usuario, podeRenomear, aoTrocar, aoNovoProjeto, aoRenomear, aoSairDaConta }: Props) {
   const [aberto, setAberto] = useState(false);
   const [projetos, setProjetos] = useState<Projeto[] | null>(null);
   const caixa = useRef<HTMLDivElement>(null);
@@ -65,6 +67,7 @@ export function MenuProjeto({ titulo, projetoId, usuario, aoTrocar, aoNovoProjet
             <button type="button" onClick={aoNovoProjeto}>
               + novo projeto
             </button>
+            {podeRenomear ? <button type="button" onClick={() => { setAberto(false); aoRenomear(); }}>renomear</button> : null}
             <span className="quem">{usuario.nome}</span>
             <button type="button" onClick={aoSairDaConta}>
               sair

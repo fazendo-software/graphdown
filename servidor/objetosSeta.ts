@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import { type TipoObjetoSeta } from "../core/objetosSeta.ts";
 import type { ObjetoSeta, Posicao } from "../core/tipos.ts";
 

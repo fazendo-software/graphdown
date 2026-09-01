@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import { fundirArestas, fundirCamposAresta } from "../core/categoria.ts";
 import { categoriasDoProjeto } from "./categorias.ts";
 import { buscarProjeto } from "./projetos.ts";

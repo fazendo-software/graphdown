@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool } from "./db.ts";
 import type { Nota } from "../core/tipos.ts";
 
 const COLUNAS = "id, conteudo, pos_x as x, pos_y as y";
