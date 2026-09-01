@@ -7,6 +7,6 @@ export default defineConfig({
     ssr: fileURLToPath(new URL("./main.ts", import.meta.url)),
     outDir: fileURLToPath(new URL("./dist", import.meta.url)),
     emptyOutDir: true,
-    rollupOptions: { external: ["electron"] },
+    rollupOptions: { external: ["electron", "ws"] },
   },
 });
