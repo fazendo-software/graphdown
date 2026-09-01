@@ -10,12 +10,21 @@ Node 22.13 ou maior (roda TypeScript direto, sem build — `--experimental-strip
 ## AppImage (Linux)
 
 ```bash
-npm install
-npm run dist:electron
+./scripts/recriar-appimage.sh
 ```
 
 O arquivo `dist/Grapydown-*.AppImage` guarda o banco em `~/.config/grapydown/`; não exige
 Postgres nem configuração. A primeira execução cria o banco e as categorias padrão.
+
+## Memória local
+
+No AppImage, projetos, nós, setas, notas, contas, permissões e sessões ficam em
+`~/.config/grapydown/grapydown.sqlite`. O segredo que assina as sessões fica em
+`~/.config/grapydown/cookie-secret`; cookies e preferências da janela ficam na mesma pasta.
+
+Para backup, feche o app e copie `grapydown.sqlite`. Pelo código-fonte o padrão é
+`grapydown.sqlite` no diretório do servidor (ou `GRAPYDOWN_DATABASE`); no Docker, é
+`/dados/grapydown.sqlite` dentro do volume.
 
 ## Uso com Docker
 
